@@ -77,6 +77,25 @@ func TestRenderControlPlane(t *testing.T) {
 	if len(files) != 8 {
 		t.Fatalf("expected 8 files, got %d", len(files))
 	}
+
+	var bootstrap, nomadService string
+	for _, file := range files {
+		switch file.Path {
+		case "bootstrap-control-plane.sh":
+			bootstrap = file.Content
+		case "systemd/nomad.service":
+			nomadService = file.Content
+		}
+	}
+	if strings.Contains(nomadService, "User=nomad") || strings.Contains(nomadService, "Group=nomad") {
+		t.Fatal("nomad service should run with client privileges for Docker/cgroups")
+	}
+	if !strings.Contains(bootstrap, `NOMAD_BOOTSTRAP_TOKEN_FILE="$NOMAD_ACL_DIR/bootstrap.token"`) {
+		t.Fatal("bootstrap should keep ACL tokens outside Nomad's config file scan path")
+	}
+	if !strings.Contains(bootstrap, "migrate_nomad_acl_files") {
+		t.Fatal("bootstrap should migrate older ACL token files")
+	}
 }
 
 func TestRenderAppJob(t *testing.T) {
