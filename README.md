@@ -54,7 +54,7 @@ The default `sample-api` uses `traefik/whoami` so the first deployment can prove
 curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
 ```
 
-If that curl times out while `poolctl control-plane status` shows Nomad/Traefik active and the job is healthy, open TCP port `80` in the Oracle VCN security list or NSG attached to the instance. Add TCP `443` there too before using HTTPS domains.
+If that curl times out while `poolctl control-plane status` shows Nomad/Traefik active and the job is healthy, open TCP port `80` in the Oracle VCN security list or NSG attached to the instance. Add TCP `443` there too before using HTTPS domains. If the error changes to connection refused, run `poolctl control-plane status` again and check the `listeners`, `local ingress smoke`, and Traefik logs sections.
 
 To include the guard binary in the Oracle bootstrap bundle:
 
