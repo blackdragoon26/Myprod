@@ -54,7 +54,7 @@ The default `sample-api` uses `traefik/whoami` so the first deployment can prove
 curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
 ```
 
-If that curl times out while `poolctl control-plane status` shows Nomad/Traefik active and the job is healthy, open TCP port `80` in the Oracle VCN security list or NSG attached to the instance. Add TCP `443` there too before using HTTPS domains. If the error changes to connection refused, run `poolctl control-plane status` again and check the `listeners`, `local ingress smoke`, and Traefik logs sections.
+If that curl times out while `poolctl control-plane status` shows Nomad/Traefik active and the job is healthy, open TCP port `80` in the Oracle VCN security list or NSG attached to the instance. Add TCP `443` there too before using HTTPS domains. If the error is immediate `Connection refused` while Traefik is listening on `*:80`, inspect Oracle's host `iptables` INPUT chain; some images reject public traffic before UFW's allow rules run. The generated bootstrap now inserts persistent `poolctl-ingress-http` and `poolctl-ingress-https` rules ahead of that reject.
 
 To include the guard binary in the Oracle bootstrap bundle:
 
@@ -112,6 +112,7 @@ The generated bootstrap currently installs:
 - Traefik `3.7.7` from GitHub release archives with checksum verification
 - WireGuard `wg0` at `10.44.0.1/24`
 - Nomad TLS and initial ACL bootstrap token
+- host firewall rules for SSH, HTTP, HTTPS, and WireGuard ingress
 - systemd units for Nomad, Traefik, and the optional `poolctl` guard timer
 
 Running `work/rendered/bootstrap-control-plane.sh` on Oracle will mutate the server.

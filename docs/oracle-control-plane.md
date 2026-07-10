@@ -66,7 +66,7 @@ ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 'cd ~/poolctl-render
 
 Both are downloaded from upstream release archives and checked against upstream checksum files before installation.
 
-## OCI Public Ingress
+## Public Ingress
 
 The bootstrap configures Ubuntu's `ufw` firewall, but it cannot edit Oracle Cloud's VCN security lists or NSGs. If a Nomad job deploys successfully but public curl times out, the traffic is probably blocked before it reaches the VM.
 
@@ -81,6 +81,21 @@ Description: poolctl HTTP ingress
 
 For HTTPS later, add the same rule for destination port `443`.
 
+Oracle Ubuntu images can also ship with direct `iptables` INPUT rules that accept SSH and then reject everything before UFW's chains run. In that case `ufw status` can show `80/tcp` and `443/tcp` as allowed while public curl still fails with `Connection refused`. The generated bootstrap inserts and persists narrow host rules before that reject:
+
+```txt
+poolctl-ingress-http   tcp/80
+poolctl-ingress-https  tcp/443
+poolctl-wireguard      udp/51820
+```
+
+To inspect the host chain manually:
+
+```sh
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
+  "sudo iptables -L INPUT -n -v --line-numbers | sed -n '1,12p'"
+```
+
 Quick checks:
 
 ```sh
@@ -88,4 +103,4 @@ Quick checks:
 curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
 ```
 
-If `control-plane status` shows Nomad/Traefik/WireGuard active and the Nomad job is healthy, but public curl still times out, fix the OCI ingress rule first.
+If `control-plane status` shows Nomad/Traefik/WireGuard active and the Nomad job is healthy, but public curl still times out, fix the OCI ingress rule first. If public curl fails immediately with `Connection refused`, inspect the host `iptables` chain next.

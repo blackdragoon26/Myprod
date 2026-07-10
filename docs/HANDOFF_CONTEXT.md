@@ -5,8 +5,21 @@ This document is the full working context for continuing this project in a new C
 Use it as the first message/context paste if the current chat becomes too messy:
 
 ```txt
-Read docs/HANDOFF_CONTEXT.md first. Continue the Myprod/poolctl infrastructure project from the current repo state. Do not restart the project. The app stack is already running inside Oracle; the current blocker is public ingress from the internet to Oracle public IP 140.245.5.201 on TCP 80/443.
+Read docs/HANDOFF_CONTEXT.md first. Continue the Myprod/poolctl infrastructure project from the current repo state. Do not restart the project. The app stack is already running inside Oracle; public ingress to Oracle public IP 140.245.5.201 on TCP 80/443 is fixed. Continue with real domain, TLS, and Cloudflare DNS sync work.
 ```
+
+Latest update, 2026-07-11 IST:
+
+- Public ingress to `140.245.5.201` on TCP `80` and `443` is now working.
+- Root cause was Oracle's host `iptables` INPUT chain: it accepted SSH and then rejected traffic before UFW's allow chains ran.
+- Added persistent host rules before the reject:
+  - `poolctl-ingress-http` for TCP `80`
+  - `poolctl-ingress-https` for TCP `443`
+  - `poolctl-wireguard` for UDP `51820`
+- Rebuilt `work/poolctl`, regenerated `work/rendered`, and updated bootstrap rendering so future bootstraps insert these host firewall rules.
+- Verified public smoke:
+  - `curl -H 'Host: sample-api.pool.test' http://140.245.5.201/` returns `200 OK`.
+  - `curl -k -H 'Host: sample-api.pool.test' https://140.245.5.201/` reaches Traefik and returns `200 OK` with Traefik's default self-signed cert.
 
 ## User Goal
 
@@ -131,11 +144,11 @@ Current public ingress expectation:
 curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
 ```
 
-Current state:
+Previous failing state:
 
 - Works inside the VM through Traefik.
-- Fails from outside with `curl: (7) Failed to connect to 140.245.5.201 port 80`.
-- Therefore current blocker is public network path, probably OCI Security List / NSG / VNIC attachment mismatch, not Nomad, Docker, or Traefik.
+- Failed from outside with `curl: (7) Failed to connect to 140.245.5.201 port 80`.
+- The actual cause was a host `iptables` reject rule before UFW, not Nomad, Docker, Traefik, or OCI VCN rules.
 
 ## Implemented Commands
 
@@ -310,25 +323,21 @@ Interpretation:
 
 ## Current Next Step
 
-Run:
+Public ingress is fixed. The next engineering step is HTTPS/domain work:
+
+- point a real Cloudflare-managed domain/subdomain at `140.245.5.201`
+- configure Traefik ACME or Cloudflare-origin TLS
+- then add `poolctl dns sync`
+
+For regression checks, run:
 
 ```sh
 cd /Users/sankalpjha/Documents/Codex/2026-07-08/okay-so/Myprod
 
 go build -a -o work/poolctl ./cmd/poolctl
 ./work/poolctl control-plane status
+curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
 ```
-
-Inspect:
-
-```txt
-private-interface ingress smoke:
-```
-
-Expected:
-
-- If private-interface smoke returns `whoami`, VM accepts traffic on its private VNIC. Public failure is definitely OCI Security List / NSG / public ingress config.
-- If private-interface smoke fails, inspect Ubuntu/UFW/interface binding despite Traefik showing `*:80`.
 
 Do not redeploy `sample-api` unless it stops running.
 
@@ -610,14 +619,16 @@ If direct SSH works from a less restricted Codex, use it to inspect OCI-facing n
 
 ## Current Sandbox Limitation
 
-The current Codex session cannot SSH to Oracle because network access is restricted. It can:
+Earlier Codex sessions could not SSH to Oracle because network access was restricted. This session was granted terminal/network access and successfully ran SSH checks and host firewall updates.
+
+Without network access, Codex can still:
 
 - edit repo files
 - run local tests/builds
 - inspect pasted terminal output
 - commit locally
 
-It cannot:
+Without network access, it cannot:
 
 - run remote SSH commands itself
 - verify public network from all locations reliably
@@ -667,7 +678,7 @@ WireGuard: active
 Docker sample app: running
 Traefik local route: works
 Nomad token/ACL: recovered and works
-Current blocker: public internet cannot connect to 140.245.5.201:80
-Likely fix: OCI NSG/security-list/VNIC/subnet public ingress check
+Public HTTP ingress: works on 140.245.5.201:80
+Public HTTPS ingress: reaches Traefik on 140.245.5.201:443 with default cert
+Next step: real domain + TLS + Cloudflare DNS sync
 ```
-

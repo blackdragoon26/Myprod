@@ -143,6 +143,35 @@ require_root() {
   fi
 }
 
+ensure_iptables_accept() {
+  proto="$1"
+  port="$2"
+  comment="$3"
+
+  if $SUDO iptables -C INPUT -p "$proto" -m state --state NEW --dport "$port" -m comment --comment "$comment" -j ACCEPT 2>/dev/null; then
+    return
+  fi
+
+  reject_line="$($SUDO iptables -L INPUT --line-numbers -n | awk '$2 == "REJECT" { print $1; exit }')"
+  if [ -n "$reject_line" ]; then
+    $SUDO iptables -I INPUT "$reject_line" -p "$proto" -m state --state NEW --dport "$port" -m comment --comment "$comment" -j ACCEPT
+  else
+    $SUDO iptables -A INPUT -p "$proto" -m state --state NEW --dport "$port" -m comment --comment "$comment" -j ACCEPT
+  fi
+}
+
+ensure_host_ingress_firewall() {
+  ensure_iptables_accept tcp 80 poolctl-ingress-http
+  ensure_iptables_accept tcp 443 poolctl-ingress-https
+  ensure_iptables_accept udp 51820 poolctl-wireguard
+
+  if command -v netfilter-persistent >/dev/null 2>&1; then
+    $SUDO netfilter-persistent save || true
+  elif command -v iptables-save >/dev/null 2>&1 && $SUDO test -d /etc/iptables; then
+    $SUDO sh -c 'iptables-save > /etc/iptables/rules.v4'
+  fi
+}
+
 detect_arch() {
   case "$(uname -m)" in
     aarch64|arm64) echo "arm64" ;;
@@ -506,7 +535,7 @@ require_root
 ARCH="$(detect_arch)"
 
 $SUDO apt-get update
-$SUDO apt-get install -y curl unzip ca-certificates gnupg lsb-release ufw wireguard openssl tar
+$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y curl unzip ca-certificates gnupg lsb-release ufw wireguard openssl tar iptables-persistent
 
 # Docker is used by Nomad's docker task driver.
 if ! command -v docker >/dev/null 2>&1; then
@@ -550,6 +579,7 @@ $SUDO ufw allow 80/tcp
 $SUDO ufw allow 443/tcp
 $SUDO ufw allow 51820/udp
 $SUDO ufw --force enable
+ensure_host_ingress_firewall
 
 $SUDO systemctl daemon-reload
 migrate_nomad_acl_files

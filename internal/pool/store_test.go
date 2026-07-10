@@ -153,6 +153,9 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")
 	}
+	if !strings.Contains(bootstrap, "ensure_host_ingress_firewall") || !strings.Contains(bootstrap, "poolctl-ingress-http") || !strings.Contains(bootstrap, "poolctl-ingress-https") {
+		t.Fatal("bootstrap should open Oracle host iptables ingress before provider traffic reaches UFW")
+	}
 	if !strings.Contains(bootstrap, "validate_nomad_token") || !strings.Contains(bootstrap, `"$NOMAD_ADDR/v1/services"`) {
 		t.Fatal("bootstrap should validate the Nomad token before starting Traefik")
 	}
