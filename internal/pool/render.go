@@ -314,10 +314,17 @@ run_nomad_acl_bootstrap() {
   fi
 
   echo "Nomad ACL is already bootstrapped but no local token was found; resetting bootstrap with reset index $reset_index."
-  output="$(nomad_cli acl bootstrap -json -reset -reset-index="$reset_index" 2>&1)" || {
+  $SUDO install -d -m 0700 -o root -g root /opt/nomad/server
+  printf '%%s\n' "$reset_index" | $SUDO tee /opt/nomad/server/acl-bootstrap-reset >/dev/null
+  $SUDO chmod 0600 /opt/nomad/server/acl-bootstrap-reset
+  $SUDO systemctl restart nomad
+  wait_for_nomad
+
+  output="$(nomad_cli acl bootstrap -json 2>&1)" || {
     printf '%%s\n' "$output" >&2
     die "failed to reset Nomad ACL bootstrap"
   }
+  $SUDO rm -f /opt/nomad/server/acl-bootstrap-reset
   write_nomad_bootstrap_json "$output"
 }
 
