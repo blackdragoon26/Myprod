@@ -135,6 +135,12 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "read_nomad_token()") || strings.Contains(bootstrap, "return 1\n}\n\nparse_nomad_secret_id") {
 		t.Fatal("optional token reader should not fail when no token exists")
 	}
+	if !strings.Contains(bootstrap, "empty-token.") || !strings.Contains(bootstrap, "invalid-token.") {
+		t.Fatal("bootstrap should archive empty or invalid Nomad token files")
+	}
+	if !strings.Contains(bootstrap, "nomad_token_can_read_services") {
+		t.Fatal("bootstrap should verify existing Nomad tokens before reusing them")
+	}
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")
 	}

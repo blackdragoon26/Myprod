@@ -264,16 +264,23 @@ nomad_cli() {
 
 read_nomad_token() {
   for file in "$NOMAD_BOOTSTRAP_TOKEN_FILE" /etc/nomad.d/bootstrap.token /etc/nomad.d/acl/bootstrap.token; do
-    if [ -f "$file" ]; then
-      $SUDO cat "$file"
-      return 0
+    if [ -s "$file" ]; then
+      token="$($SUDO awk 'NF { print; exit }' "$file")"
+      if [ -n "$token" ]; then
+        printf '%%s\n' "$token"
+        return 0
+      fi
     fi
   done
   return 0
 }
 
 parse_nomad_secret_id() {
-  $SUDO grep -o '"SecretID"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" | head -1 | sed 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+  $SUDO awk -F'"' '
+    /"SecretID"[[:space:]]*:/ { print $4; exit }
+    /"SecretId"[[:space:]]*:/ { print $4; exit }
+    /"secret_id"[[:space:]]*:/ { print $4; exit }
+  ' "$1"
 }
 
 write_nomad_bootstrap_json() {
@@ -284,6 +291,13 @@ write_nomad_bootstrap_json() {
 
 migrate_nomad_acl_files() {
   $SUDO install -d -m 0700 -o root -g root "$NOMAD_ACL_DIR"
+
+  for token_file in "$NOMAD_BOOTSTRAP_TOKEN_FILE" /etc/nomad.d/bootstrap.token /etc/nomad.d/acl/bootstrap.token; do
+    [ -f "$token_file" ] || continue
+    if ! $SUDO awk 'NF { found=1 } END { exit found ? 0 : 1 }' "$token_file"; then
+      $SUDO mv "$token_file" "$NOMAD_ACL_DIR/empty-token.$(basename "$token_file").$(date +%%s)"
+    fi
+  done
 
   for legacy_json in /etc/nomad.d/bootstrap-token.json /etc/nomad.d/acl/bootstrap-token.json; do
     [ -f "$legacy_json" ] || continue
@@ -306,6 +320,26 @@ migrate_nomad_acl_files() {
     [ -n "$token" ] && echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
     [ -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ] && $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
   fi
+}
+
+forget_saved_nomad_tokens() {
+  stamp="$(date +%%s)"
+  for token_file in "$NOMAD_BOOTSTRAP_TOKEN_FILE" /etc/nomad.d/bootstrap.token /etc/nomad.d/acl/bootstrap.token; do
+    [ -f "$token_file" ] || continue
+    safe_name="$(basename "$token_file")"
+    $SUDO mv "$token_file" "$NOMAD_ACL_DIR/invalid-token.$safe_name.$stamp"
+  done
+}
+
+nomad_token_can_read_services() {
+  token="$1"
+  tmp_body="$(mktemp)"
+  http_code="$($SUDO curl -fsS -o "$tmp_body" -w '%%{http_code}' \
+    --cacert /etc/nomad.d/tls/nomad-agent-ca.pem \
+    -H "X-Nomad-Token: $token" \
+    "$NOMAD_ADDR/v1/services" 2>/dev/null || true)"
+  $SUDO rm -f "$tmp_body"
+  [ "$http_code" = "200" ]
 }
 
 restart_nomad_or_die() {
@@ -399,15 +433,25 @@ wait_for_nomad() {
 
 bootstrap_nomad_acl() {
   migrate_nomad_acl_files
-  if [ -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
+  existing_token="$(read_nomad_token)"
+  if [ -n "$existing_token" ] && nomad_token_can_read_services "$existing_token"; then
     return
+  fi
+  if [ -n "$existing_token" ]; then
+    echo "Saved Nomad token cannot read /v1/services; recovering ACL bootstrap token."
+    forget_saved_nomad_tokens
   fi
   wait_for_nomad
   run_nomad_acl_bootstrap
   token="$(parse_nomad_secret_id "$NOMAD_BOOTSTRAP_JSON_FILE")"
-  [ -n "$token" ] || die "failed to parse Nomad bootstrap token"
+  if [ -z "$token" ]; then
+    echo "Could not parse SecretID from Nomad ACL bootstrap output:" >&2
+    $SUDO sed -n '1,80p' "$NOMAD_BOOTSTRAP_JSON_FILE" >&2 || true
+    die "failed to parse Nomad bootstrap token"
+  fi
   echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
   $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
+  validate_nomad_token "$token"
 }
 
 validate_nomad_token() {

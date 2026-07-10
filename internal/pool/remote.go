@@ -85,8 +85,13 @@ nomad node status
 printf 'nomad jobs:\n'
 nomad job status
 printf 'nomad services api:\n'
+if [ -n "$NOMAD_TOKEN" ]; then
+  printf 'token: present\n'
+else
+  printf 'token: missing\n'
+fi
 tmp_body="$(mktemp)"
-code="$(curl -fsS -o "$tmp_body" -w '%{http_code}' --cacert /etc/nomad.d/tls/nomad-agent-ca.pem -H "X-Nomad-Token: $token" "$NOMAD_ADDR/v1/services" 2>/dev/null || true)"
+code="$(curl -fsS -o "$tmp_body" -w '%{http_code}' --cacert /etc/nomad.d/tls/nomad-agent-ca.pem -H "X-Nomad-Token: $NOMAD_TOKEN" "$NOMAD_ADDR/v1/services" 2>/dev/null || true)"
 printf 'GET /v1/services -> %s\n' "$code"
 if [ "$code" != "200" ]; then
   sed -n '1,20p' "$tmp_body" || true
@@ -108,7 +113,7 @@ sudo journalctl -u traefik -n 60 --no-pager || true`)
 
 func remoteNomadCommand(node Node, body string) string {
 	return fmt.Sprintf(`set -euo pipefail
-token="$(sudo cat /var/lib/poolctl/nomad-acl/bootstrap.token 2>/dev/null || sudo cat /etc/nomad.d/acl/bootstrap.token 2>/dev/null || sudo cat /etc/nomad.d/bootstrap.token)"
+token="$(for file in /var/lib/poolctl/nomad-acl/bootstrap.token /etc/nomad.d/acl/bootstrap.token /etc/nomad.d/bootstrap.token; do if sudo test -s "$file"; then sudo awk 'NF { print; exit }' "$file"; break; fi; done)"
 sudo env NOMAD_ADDR=%s NOMAD_CACERT=/etc/nomad.d/tls/nomad-agent-ca.pem NOMAD_TOKEN="$token" sh -lc %s`, shellQuote("https://"+node.OverlayIP+":4646"), shellQuote(body))
 }
 
