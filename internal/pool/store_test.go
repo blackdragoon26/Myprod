@@ -141,6 +141,12 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "nomad_token_can_read_services") {
 		t.Fatal("bootstrap should verify existing Nomad tokens before reusing them")
 	}
+	if !strings.Contains(bootstrap, `sed -n 's/.*"SecretID"`) {
+		t.Fatal("bootstrap should parse SecretID from one-line Nomad JSON")
+	}
+	if !strings.Contains(bootstrap, "systemctl stop traefik") {
+		t.Fatal("bootstrap should stop stale Traefik before rotating Nomad TLS or tokens")
+	}
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")
 	}

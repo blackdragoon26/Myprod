@@ -276,11 +276,7 @@ read_nomad_token() {
 }
 
 parse_nomad_secret_id() {
-  $SUDO awk -F'"' '
-    /"SecretID"[[:space:]]*:/ { print $4; exit }
-    /"SecretId"[[:space:]]*:/ { print $4; exit }
-    /"secret_id"[[:space:]]*:/ { print $4; exit }
-  ' "$1"
+  $SUDO sed -n 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p; s/.*"SecretId"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p; s/.*"secret_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$1" | head -1
 }
 
 write_nomad_bootstrap_json() {
@@ -551,6 +547,7 @@ $SUDO ufw --force enable
 
 $SUDO systemctl daemon-reload
 migrate_nomad_acl_files
+$SUDO systemctl stop traefik 2>/dev/null || true
 $SUDO systemctl enable nomad
 if ! $SUDO systemctl restart nomad; then
   print_nomad_diagnostics
