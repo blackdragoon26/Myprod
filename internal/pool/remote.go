@@ -110,10 +110,18 @@ fi
 sudo grep -n 'token:' /etc/traefik/traefik.yml 2>/dev/null | sed 's/token:.*/token: <redacted>/' || true
 printf 'local ingress smoke:\n'
 curl -fsS -H 'Host: sample-api.pool.test' http://127.0.0.1/ | head -20 || true
+printf 'private-interface ingress smoke:\n'
+private_ip="$(ip -4 -o addr show scope global | awk '$2 != "wg0" && $2 != "docker0" { split($4, a, "/"); print a[1]; exit }')"
+printf 'private ip: %s\n' "$private_ip"
+if [ -n "$private_ip" ]; then
+  curl -fsS -H 'Host: sample-api.pool.test' "http://$private_ip/" | head -20 || true
+fi
+printf 'public-interface hint:\n'
+printf 'If local/private smoke works but public curl fails, check OCI NSG/security-list ingress for TCP 80/443 on the instance VNIC/subnet.\n'
 printf 'traefik recent logs:\n'
-sudo journalctl -u traefik -n 40 --no-pager || true
+sudo journalctl -u traefik --since '10 minutes ago' --no-pager || true
 printf 'nomad recent logs:\n'
-sudo journalctl -u nomad -n 60 --no-pager || true`)
+sudo journalctl -u nomad --since '10 minutes ago' --no-pager || true`)
 	return runLogged("ssh", "-i", key, target, cmd)
 }
 
