@@ -121,6 +121,9 @@ set -euo pipefail
 NOMAD_VERSION="${NOMAD_VERSION:-%s}"
 TRAEFIK_VERSION="${TRAEFIK_VERSION:-%s}"
 NOMAD_ADDR="https://%s:4646"
+NOMAD_ACL_DIR="/etc/nomad.d/acl"
+NOMAD_BOOTSTRAP_TOKEN_FILE="$NOMAD_ACL_DIR/bootstrap.token"
+NOMAD_BOOTSTRAP_JSON_FILE="$NOMAD_ACL_DIR/bootstrap-token.json"
 
 die() {
   echo "ERROR: $*" >&2
@@ -247,7 +250,49 @@ EOF
 }
 
 nomad_cli() {
-  $SUDO env NOMAD_ADDR="$NOMAD_ADDR" NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem" nomad "$@"
+  token="$(read_nomad_token || true)"
+  if [ -n "$token" ]; then
+    $SUDO env NOMAD_ADDR="$NOMAD_ADDR" NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem" NOMAD_TOKEN="$token" nomad "$@"
+  else
+    $SUDO env NOMAD_ADDR="$NOMAD_ADDR" NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem" nomad "$@"
+  fi
+}
+
+read_nomad_token() {
+  for file in "$NOMAD_BOOTSTRAP_TOKEN_FILE" /etc/nomad.d/bootstrap.token; do
+    if [ -f "$file" ]; then
+      $SUDO cat "$file"
+      return 0
+    fi
+  done
+  return 1
+}
+
+parse_nomad_secret_id() {
+  $SUDO grep -o '"SecretID"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" | head -1 | sed 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+}
+
+migrate_nomad_acl_files() {
+  $SUDO install -d -m 0700 -o root -g root "$NOMAD_ACL_DIR"
+
+  if [ -f /etc/nomad.d/bootstrap-token.json ]; then
+    if [ ! -f "$NOMAD_BOOTSTRAP_JSON_FILE" ]; then
+      $SUDO mv /etc/nomad.d/bootstrap-token.json "$NOMAD_BOOTSTRAP_JSON_FILE"
+      $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_JSON_FILE"
+    else
+      $SUDO mv /etc/nomad.d/bootstrap-token.json "$NOMAD_ACL_DIR/bootstrap-token.legacy.$(date +%%s).json"
+    fi
+  fi
+
+  if [ -f /etc/nomad.d/bootstrap.token ] && [ ! -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
+    $SUDO install -m 0600 -o root -g root /etc/nomad.d/bootstrap.token "$NOMAD_BOOTSTRAP_TOKEN_FILE"
+  fi
+
+  if [ -f "$NOMAD_BOOTSTRAP_JSON_FILE" ] && [ ! -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
+    token="$(parse_nomad_secret_id "$NOMAD_BOOTSTRAP_JSON_FILE")"
+    [ -n "$token" ] && echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
+    [ -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ] && $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
+  fi
 }
 
 print_nomad_diagnostics() {
@@ -263,8 +308,13 @@ print_nomad_diagnostics() {
 
 wait_for_nomad() {
   for _ in $(seq 1 45); do
-    if $SUDO systemctl is-active --quiet nomad && nomad_cli status >/dev/null 2>&1; then
-      return
+    if $SUDO systemctl is-active --quiet nomad; then
+      if nomad_cli status >/dev/null 2>&1; then
+        return
+      fi
+      if $SUDO curl -fsS --cacert /etc/nomad.d/tls/nomad-agent-ca.pem "$NOMAD_ADDR/v1/status/leader" | grep -q .; then
+        return
+      fi
     fi
     sleep 2
   done
@@ -273,20 +323,21 @@ wait_for_nomad() {
 }
 
 bootstrap_nomad_acl() {
-  if [ -f /etc/nomad.d/bootstrap.token ]; then
+  migrate_nomad_acl_files
+  if [ -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
     return
   fi
   wait_for_nomad
-  nomad_cli acl bootstrap -json | $SUDO tee /etc/nomad.d/bootstrap-token.json >/dev/null
-  $SUDO chmod 0600 /etc/nomad.d/bootstrap-token.json
-  token="$(grep -o '"SecretID"[[:space:]]*:[[:space:]]*"[^"]*"' /etc/nomad.d/bootstrap-token.json | head -1 | sed 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
+  nomad_cli acl bootstrap -json | $SUDO tee "$NOMAD_BOOTSTRAP_JSON_FILE" >/dev/null
+  $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_JSON_FILE"
+  token="$(parse_nomad_secret_id "$NOMAD_BOOTSTRAP_JSON_FILE")"
   [ -n "$token" ] || die "failed to parse Nomad bootstrap token"
-  echo "$token" | $SUDO tee /etc/nomad.d/bootstrap.token >/dev/null
-  $SUDO chmod 0600 /etc/nomad.d/bootstrap.token
+  echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
+  $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
 }
 
 render_traefik_env() {
-  token="$($SUDO cat /etc/nomad.d/bootstrap.token)"
+  token="$(read_nomad_token)"
   $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik
   $SUDO install -m 0644 -o traefik -g traefik /etc/nomad.d/tls/nomad-agent-ca.pem /etc/traefik/nomad-agent-ca.pem
   {
@@ -326,6 +377,7 @@ render_wireguard_config
 render_nomad_tls
 
 $SUDO install -d -m 0750 -o nomad -g nomad /etc/nomad.d /opt/nomad
+$SUDO install -d -m 0700 -o root -g root "$NOMAD_ACL_DIR"
 $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik /var/lib/traefik
 $SUDO install -m 0640 -o nomad -g nomad nomad/server.hcl /etc/nomad.d/server.hcl
 $SUDO install -m 0644 systemd/nomad.service /etc/systemd/system/nomad.service
@@ -346,6 +398,7 @@ $SUDO ufw allow 51820/udp
 $SUDO ufw --force enable
 
 $SUDO systemctl daemon-reload
+migrate_nomad_acl_files
 $SUDO systemctl enable nomad
 if ! $SUDO systemctl restart nomad; then
   print_nomad_diagnostics
@@ -363,7 +416,7 @@ echo "Control-plane public IP: %s"
 echo "Control-plane overlay IP: %s"
 echo "Nomad:  $NOMAD_ADDR"
 echo "Traefik: http://%s/"
-echo "Bootstrap token: /etc/nomad.d/bootstrap.token"
+echo "Bootstrap token: $NOMAD_BOOTSTRAP_TOKEN_FILE"
 echo "Done. Run: sudo systemctl status nomad traefik wg-quick@wg0"
 `, node.Name, defaultNomadVersion, defaultTraefikVersion, node.OverlayIP, node.OverlayIP, node.OverlayIP, userOrUbuntu(node), node.PublicIP, node.OverlayIP, node.PublicIP)
 }
