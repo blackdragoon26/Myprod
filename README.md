@@ -48,6 +48,12 @@ go run ./cmd/poolctl app deploy sample-api
 go run ./cmd/poolctl guard check
 ```
 
+The default `sample-api` uses `traefik/whoami` so the first deployment can prove the control plane works before you bring a real backend image. After deploying it, smoke-test centralized ingress with:
+
+```sh
+curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+```
+
 To include the guard binary in the Oracle bootstrap bundle:
 
 ```sh
