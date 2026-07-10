@@ -312,7 +312,8 @@ wait_for_nomad() {
       if nomad_cli status >/dev/null 2>&1; then
         return
       fi
-      if $SUDO curl -fsS --cacert /etc/nomad.d/tls/nomad-agent-ca.pem "$NOMAD_ADDR/v1/status/leader" | grep -q .; then
+      leader="$($SUDO curl -fsS --cacert /etc/nomad.d/tls/nomad-agent-ca.pem "$NOMAD_ADDR/v1/status/leader" 2>/dev/null || true)"
+      if [ -n "$leader" ]; then
         return
       fi
     fi
