@@ -246,19 +246,37 @@ EOF
   $SUDO install -m 0644 -o nomad -g nomad "$tls_tmp/global-server-nomad.pem" /etc/nomad.d/tls/global-server-nomad.pem
 }
 
-bootstrap_nomad_acl() {
-  nomad_cli() {
-    $SUDO env NOMAD_ADDR="$NOMAD_ADDR" NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem" nomad "$@"
-  }
-  if [ -f /etc/nomad.d/bootstrap.token ]; then
-    return
-  fi
-  for _ in $(seq 1 30); do
-    if nomad_cli status >/dev/null 2>&1; then
-      break
+nomad_cli() {
+  $SUDO env NOMAD_ADDR="$NOMAD_ADDR" NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem" nomad "$@"
+}
+
+print_nomad_diagnostics() {
+  echo "---- nomad systemd status ----"
+  $SUDO systemctl status nomad --no-pager -l || true
+  echo "---- nomad journal ----"
+  $SUDO journalctl -u nomad -n 120 --no-pager || true
+  echo "---- wg0 address ----"
+  ip addr show wg0 || true
+  echo "---- listening ports ----"
+  $SUDO ss -ltnp | grep -E ':(4646|4647|4648)\b' || true
+}
+
+wait_for_nomad() {
+  for _ in $(seq 1 45); do
+    if $SUDO systemctl is-active --quiet nomad && nomad_cli status >/dev/null 2>&1; then
+      return
     fi
     sleep 2
   done
+  print_nomad_diagnostics
+  die "Nomad did not become ready on $NOMAD_ADDR"
+}
+
+bootstrap_nomad_acl() {
+  if [ -f /etc/nomad.d/bootstrap.token ]; then
+    return
+  fi
+  wait_for_nomad
   nomad_cli acl bootstrap -json | $SUDO tee /etc/nomad.d/bootstrap-token.json >/dev/null
   $SUDO chmod 0600 /etc/nomad.d/bootstrap-token.json
   token="$(grep -o '"SecretID"[[:space:]]*:[[:space:]]*"[^"]*"' /etc/nomad.d/bootstrap-token.json | head -1 | sed 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
@@ -330,7 +348,10 @@ $SUDO ufw --force enable
 
 $SUDO systemctl daemon-reload
 $SUDO systemctl enable nomad
-$SUDO systemctl restart nomad
+if ! $SUDO systemctl restart nomad; then
+  print_nomad_diagnostics
+  die "failed to restart Nomad"
+fi
 bootstrap_nomad_acl
 render_traefik_env
 $SUDO systemctl enable traefik
