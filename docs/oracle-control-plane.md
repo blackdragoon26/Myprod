@@ -36,7 +36,13 @@ The script itself does mutate the VPS after you copy it over and run it.
 
 ## Next Manual Step
 
-After reviewing generated files:
+After reviewing generated files, either let `poolctl` apply the bundle:
+
+```sh
+go run ./cmd/poolctl bootstrap-control-plane --apply
+```
+
+Or run the equivalent manual commands:
 
 ```sh
 scp -i ~/.ssh/keys/openclaw-oracle.key -r work/rendered ubuntu@140.245.5.201:~/poolctl-rendered
