@@ -44,6 +44,7 @@ func DeployAppJob(node Node, app App, localJobPath, remoteDir string) error {
 		return err
 	}
 	target := fmt.Sprintf("%s@%s", node.SSHUser, node.PublicIP)
+	remoteDir = normalizeRemoteHome(remoteDir)
 	remoteJob := path.Join(remoteDir, path.Base(localJobPath))
 
 	if err := runLogged("ssh", "-i", key, target, "mkdir -p "+shellQuote(remoteDir)); err != nil {
@@ -124,4 +125,17 @@ func expandHome(path string) (string, error) {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
+}
+
+func normalizeRemoteHome(path string) string {
+	if path == "~" || path == "$HOME" {
+		return "."
+	}
+	if strings.HasPrefix(path, "~/") {
+		return strings.TrimPrefix(path, "~/")
+	}
+	if strings.HasPrefix(path, "$HOME/") {
+		return strings.TrimPrefix(path, "$HOME/")
+	}
+	return path
 }
