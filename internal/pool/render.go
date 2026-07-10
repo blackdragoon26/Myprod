@@ -673,8 +673,10 @@ func renderNomadJob(app App) string {
       tags = [
         "traefik.enable=true",
         "traefik.http.routers.%s.rule=Host(`+"`%s`"+`)",
-        "traefik.http.routers.%s.entrypoints=websecure",
-        "traefik.http.routers.%s.tls=true",
+        "traefik.http.routers.%s.entrypoints=web",
+        "traefik.http.routers.%s-secure.rule=Host(`+"`%s`"+`)",
+        "traefik.http.routers.%s-secure.entrypoints=websecure",
+        "traefik.http.routers.%s-secure.tls=true",
       ]
 
       check {
@@ -700,7 +702,7 @@ func renderNomadJob(app App) string {
     }
   }
 }
-`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Image)
+`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Image)
 }
 
 func userOrUbuntu(node Node) string {
