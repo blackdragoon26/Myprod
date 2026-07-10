@@ -546,7 +546,7 @@ providers:
   nomad:
     endpoint:
       address: "https://%s:4646"
-      token: "%%%%NOMAD_TOKEN%%%%"
+      token: "__NOMAD_TOKEN__"
       tls:
         ca: "/etc/traefik/nomad-agent-ca.pem"
     exposedByDefault: false
@@ -592,7 +592,7 @@ Group=traefik
 EnvironmentFile=/etc/traefik/traefik.env
 RuntimeDirectory=traefik
 RuntimeDirectoryMode=0750
-ExecStartPre=/bin/sh -c 'umask 077; sed "s/%%NOMAD_TOKEN%%/${NOMAD_TOKEN}/g" /etc/traefik/traefik.yml > /run/traefik/traefik.yml'
+ExecStartPre=/bin/sh -c 'umask 077; sed "s/__NOMAD_TOKEN__/${NOMAD_TOKEN}/g" /etc/traefik/traefik.yml > /run/traefik/traefik.yml'
 ExecStart=/usr/local/bin/traefik --configFile=/run/traefik/traefik.yml
 Restart=on-failure
 RestartSec=2

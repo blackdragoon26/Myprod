@@ -98,13 +98,17 @@ func TestRenderControlPlane(t *testing.T) {
 		t.Fatalf("expected 8 files, got %d", len(files))
 	}
 
-	var bootstrap, nomadService string
+	var bootstrap, nomadService, traefikConfig, traefikService string
 	for _, file := range files {
 		switch file.Path {
 		case "bootstrap-control-plane.sh":
 			bootstrap = file.Content
 		case "systemd/nomad.service":
 			nomadService = file.Content
+		case "traefik/traefik.yml":
+			traefikConfig = file.Content
+		case "systemd/traefik.service":
+			traefikService = file.Content
 		}
 	}
 	if strings.Contains(nomadService, "User=nomad") || strings.Contains(nomadService, "Group=nomad") {
@@ -133,6 +137,12 @@ func TestRenderControlPlane(t *testing.T) {
 	}
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")
+	}
+	if !strings.Contains(traefikConfig, "token: \"__NOMAD_TOKEN__\"") {
+		t.Fatal("traefik config should use a systemd-safe token placeholder")
+	}
+	if !strings.Contains(traefikService, "s/__NOMAD_TOKEN__/${NOMAD_TOKEN}/g") {
+		t.Fatal("traefik service should replace the systemd-safe token placeholder")
 	}
 }
 
