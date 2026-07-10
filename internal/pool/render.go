@@ -121,7 +121,7 @@ set -euo pipefail
 NOMAD_VERSION="${NOMAD_VERSION:-%s}"
 TRAEFIK_VERSION="${TRAEFIK_VERSION:-%s}"
 NOMAD_ADDR="https://%s:4646"
-NOMAD_ACL_DIR="/etc/nomad.d/acl"
+NOMAD_ACL_DIR="/var/lib/poolctl/nomad-acl"
 NOMAD_BOOTSTRAP_TOKEN_FILE="$NOMAD_ACL_DIR/bootstrap.token"
 NOMAD_BOOTSTRAP_JSON_FILE="$NOMAD_ACL_DIR/bootstrap-token.json"
 
@@ -129,6 +129,8 @@ die() {
   echo "ERROR: $*" >&2
   exit 1
 }
+
+trap 'echo "ERROR: bootstrap failed near line $LINENO: $BASH_COMMAND" >&2' ERR
 
 require_root() {
   if [ "$(id -u)" -eq 0 ]; then
@@ -259,7 +261,7 @@ nomad_cli() {
 }
 
 read_nomad_token() {
-  for file in "$NOMAD_BOOTSTRAP_TOKEN_FILE" /etc/nomad.d/bootstrap.token; do
+  for file in "$NOMAD_BOOTSTRAP_TOKEN_FILE" /etc/nomad.d/bootstrap.token /etc/nomad.d/acl/bootstrap.token; do
     if [ -f "$file" ]; then
       $SUDO cat "$file"
       return 0
@@ -281,23 +283,34 @@ write_nomad_bootstrap_json() {
 migrate_nomad_acl_files() {
   $SUDO install -d -m 0700 -o root -g root "$NOMAD_ACL_DIR"
 
-  if [ -f /etc/nomad.d/bootstrap-token.json ]; then
+  for legacy_json in /etc/nomad.d/bootstrap-token.json /etc/nomad.d/acl/bootstrap-token.json; do
+    [ -f "$legacy_json" ] || continue
     if [ ! -f "$NOMAD_BOOTSTRAP_JSON_FILE" ]; then
-      $SUDO mv /etc/nomad.d/bootstrap-token.json "$NOMAD_BOOTSTRAP_JSON_FILE"
+      $SUDO mv "$legacy_json" "$NOMAD_BOOTSTRAP_JSON_FILE"
       $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_JSON_FILE"
     else
-      $SUDO mv /etc/nomad.d/bootstrap-token.json "$NOMAD_ACL_DIR/bootstrap-token.legacy.$(date +%%s).json"
+      $SUDO mv "$legacy_json" "$NOMAD_ACL_DIR/bootstrap-token.legacy.$(date +%%s).json"
     fi
-  fi
+  done
 
-  if [ -f /etc/nomad.d/bootstrap.token ] && [ ! -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
-    $SUDO install -m 0600 -o root -g root /etc/nomad.d/bootstrap.token "$NOMAD_BOOTSTRAP_TOKEN_FILE"
-  fi
+  for legacy_token in /etc/nomad.d/bootstrap.token /etc/nomad.d/acl/bootstrap.token; do
+    if [ -f "$legacy_token" ] && [ ! -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
+      $SUDO install -m 0600 -o root -g root "$legacy_token" "$NOMAD_BOOTSTRAP_TOKEN_FILE"
+    fi
+  done
 
   if [ -f "$NOMAD_BOOTSTRAP_JSON_FILE" ] && [ ! -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ]; then
     token="$(parse_nomad_secret_id "$NOMAD_BOOTSTRAP_JSON_FILE")"
     [ -n "$token" ] && echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
     [ -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ] && $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
+  fi
+}
+
+restart_nomad_or_die() {
+  reason="$1"
+  if ! $SUDO systemctl restart nomad; then
+    print_nomad_diagnostics
+    die "failed to restart Nomad: $reason"
   fi
 }
 
@@ -315,15 +328,19 @@ run_nomad_acl_bootstrap() {
 
   echo "Nomad ACL is already bootstrapped but no local token was found; resetting bootstrap with reset index $reset_index."
   $SUDO install -d -m 0700 -o root -g root /opt/nomad/server
+  printf '%%s\n' "$reset_index" | $SUDO tee /opt/nomad/acl-bootstrap-reset >/dev/null
   printf '%%s\n' "$reset_index" | $SUDO tee /opt/nomad/server/acl-bootstrap-reset >/dev/null
+  $SUDO chmod 0600 /opt/nomad/acl-bootstrap-reset
   $SUDO chmod 0600 /opt/nomad/server/acl-bootstrap-reset
-  $SUDO systemctl restart nomad
+  restart_nomad_or_die "ACL bootstrap reset"
   wait_for_nomad
 
   output="$(nomad_cli acl bootstrap -json 2>&1)" || {
     printf '%%s\n' "$output" >&2
+    print_nomad_diagnostics
     die "failed to reset Nomad ACL bootstrap"
   }
+  $SUDO rm -f /opt/nomad/acl-bootstrap-reset
   $SUDO rm -f /opt/nomad/server/acl-bootstrap-reset
   write_nomad_bootstrap_json "$output"
 }
