@@ -65,3 +65,27 @@ ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 'cd ~/poolctl-render
 - Traefik: `3.7.7`
 
 Both are downloaded from upstream release archives and checked against upstream checksum files before installation.
+
+## OCI Public Ingress
+
+The bootstrap configures Ubuntu's `ufw` firewall, but it cannot edit Oracle Cloud's VCN security lists or NSGs. If a Nomad job deploys successfully but public curl times out, the traffic is probably blocked before it reaches the VM.
+
+For the centralized ingress node, allow inbound traffic in the Oracle VCN security list or NSG attached to the instance subnet/VNIC:
+
+```txt
+Source CIDR: 0.0.0.0/0
+IP Protocol: TCP
+Destination Port Range: 80
+Description: poolctl HTTP ingress
+```
+
+For HTTPS later, add the same rule for destination port `443`.
+
+Quick checks:
+
+```sh
+./work/poolctl control-plane status
+curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+```
+
+If `control-plane status` shows Nomad/Traefik/WireGuard active and the Nomad job is healthy, but public curl still times out, fix the OCI ingress rule first.
