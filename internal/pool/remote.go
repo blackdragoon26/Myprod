@@ -84,7 +84,7 @@ nomad job status`)
 
 func remoteNomadCommand(node Node, body string) string {
 	return fmt.Sprintf(`set -euo pipefail
-token="$(sudo cat /etc/nomad.d/acl/bootstrap.token 2>/dev/null || sudo cat /etc/nomad.d/bootstrap.token)"
+token="$(sudo cat /var/lib/poolctl/nomad-acl/bootstrap.token 2>/dev/null || sudo cat /etc/nomad.d/acl/bootstrap.token 2>/dev/null || sudo cat /etc/nomad.d/bootstrap.token)"
 sudo env NOMAD_ADDR=%s NOMAD_CACERT=/etc/nomad.d/tls/nomad-agent-ca.pem NOMAD_TOKEN="$token" sh -lc %s`, shellQuote("https://"+node.OverlayIP+":4646"), shellQuote(body))
 }
 
