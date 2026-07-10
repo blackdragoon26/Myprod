@@ -37,6 +37,7 @@ Local commands:
 go run ./cmd/poolctl init
 go run ./cmd/poolctl render
 go run ./cmd/poolctl bootstrap-control-plane --dry-run
+go run ./cmd/poolctl bootstrap-control-plane --apply
 go run ./cmd/poolctl doctor
 go run ./cmd/poolctl node list
 go run ./cmd/poolctl node freeze oracle-main
@@ -86,6 +87,12 @@ go run ./cmd/poolctl bootstrap-control-plane --dry-run
 ```
 
 That command only writes reviewable files under `work/rendered/`; it does not SSH into the server yet.
+
+After review, this command copies the bundle to Oracle and runs the bootstrap script:
+
+```sh
+go run ./cmd/poolctl bootstrap-control-plane --apply
+```
 
 The generated bootstrap currently installs:
 

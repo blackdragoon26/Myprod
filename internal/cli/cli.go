@@ -14,6 +14,7 @@ Usage:
   poolctl init
   poolctl render
   poolctl bootstrap-control-plane --dry-run
+  poolctl bootstrap-control-plane --apply
   poolctl doctor
   poolctl node list
   poolctl node freeze <node>
@@ -82,8 +83,8 @@ func render(store pool.Store) error {
 }
 
 func bootstrapControlPlane(store pool.Store, args []string) error {
-	if len(args) != 1 || args[0] != "--dry-run" {
-		return errors.New("usage: poolctl bootstrap-control-plane --dry-run")
+	if len(args) != 1 || (args[0] != "--dry-run" && args[0] != "--apply") {
+		return errors.New("usage: poolctl bootstrap-control-plane --dry-run|--apply")
 	}
 	cfg, _, err := store.Load()
 	if err != nil {
@@ -95,6 +96,11 @@ func bootstrapControlPlane(store pool.Store, args []string) error {
 	}
 	if err := render(store); err != nil {
 		return err
+	}
+	if args[0] == "--apply" {
+		fmt.Println()
+		fmt.Printf("applying control-plane bootstrap to %s@%s\n", node.SSHUser, node.PublicIP)
+		return pool.ApplyControlPlaneBundle(node, "work/rendered", "~/poolctl-rendered")
 	}
 	fmt.Println()
 	fmt.Println("dry-run only: no SSH connection was made and no server was changed")
