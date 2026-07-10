@@ -84,6 +84,10 @@ printf 'nomad nodes:\n'
 nomad node status
 printf 'nomad jobs:\n'
 nomad job status
+printf 'sample-api job detail:\n'
+nomad job status sample-api || true
+printf 'sample-api allocations:\n'
+nomad job allocs sample-api || true
 printf 'nomad services api:\n'
 if [ -n "$NOMAD_TOKEN" ]; then
   printf 'token: present\n'
@@ -107,7 +111,9 @@ sudo grep -n 'token:' /etc/traefik/traefik.yml 2>/dev/null | sed 's/token:.*/tok
 printf 'local ingress smoke:\n'
 curl -fsS -H 'Host: sample-api.pool.test' http://127.0.0.1/ | head -20 || true
 printf 'traefik recent logs:\n'
-sudo journalctl -u traefik -n 60 --no-pager || true`)
+sudo journalctl -u traefik -n 40 --no-pager || true
+printf 'nomad recent logs:\n'
+sudo journalctl -u nomad -n 60 --no-pager || true`)
 	return runLogged("ssh", "-i", key, target, cmd)
 }
 
