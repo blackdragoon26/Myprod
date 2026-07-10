@@ -272,7 +272,7 @@ func deployApp(store pool.Store, appName string) error {
 	}
 	localPath := outDir + "/" + file.Path
 	fmt.Printf("rendered %s\n", localPath)
-	if err := pool.DeployAppJob(node, app, localPath, "~/poolctl-jobs"); err != nil {
+	if err := pool.DeployAppJob(node, app, localPath, "$HOME/poolctl-jobs"); err != nil {
 		return err
 	}
 	placement := app.PreferNode
