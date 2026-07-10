@@ -94,7 +94,10 @@ func TestRenderControlPlane(t *testing.T) {
 	if strings.Contains(nomadService, "User=nomad") || strings.Contains(nomadService, "Group=nomad") {
 		t.Fatal("nomad service should run with client privileges for Docker/cgroups")
 	}
-	if !strings.Contains(bootstrap, `NOMAD_ACL_DIR="/var/lib/poolctl/nomad-acl"`) {
+	if !strings.Contains(bootstrap, `POOLCTL_READY_MARKER="$POOLCTL_STATE_DIR/control-plane.ready"`) {
+		t.Fatal("bootstrap should mark completed control planes")
+	}
+	if !strings.Contains(bootstrap, `NOMAD_ACL_DIR="$POOLCTL_STATE_DIR/nomad-acl"`) {
 		t.Fatal("bootstrap should keep ACL tokens outside Nomad's config file scan path")
 	}
 	if !strings.Contains(bootstrap, "migrate_nomad_acl_files") {
@@ -105,6 +108,9 @@ func TestRenderControlPlane(t *testing.T) {
 	}
 	if !strings.Contains(bootstrap, "run_nomad_acl_bootstrap") || !strings.Contains(bootstrap, "/opt/nomad/acl-bootstrap-reset") {
 		t.Fatal("bootstrap should recover when Nomad ACL is already bootstrapped but the local token is missing")
+	}
+	if !strings.Contains(bootstrap, "archive_nomad_server_state_for_bootstrap") || !strings.Contains(bootstrap, "server.bootstrap-recovery") {
+		t.Fatal("bootstrap should archive interrupted pre-ready Nomad server state as a last resort")
 	}
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")

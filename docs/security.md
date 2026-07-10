@@ -16,6 +16,7 @@ This project assumes all VPS machines are public internet hosts, so scheduler an
 - The control-plane CA private key is stored at `/etc/nomad.d/tls/nomad-agent-ca-key.pem` with root-only permissions.
 - The Nomad bootstrap token is stored at `/var/lib/poolctl/nomad-acl/bootstrap.token` with root-only permissions, outside Nomad's config directory.
 - If Nomad ACLs were bootstrapped during an interrupted setup but no local token was saved, the bootstrap script writes Nomad's reported reset index to Nomad's ACL reset file, restarts Nomad, and then stores a fresh management token.
+- If that reset-file recovery still fails before `/var/lib/poolctl/control-plane.ready` exists, the bootstrap archives `/opt/nomad/server` to `/opt/nomad/server.bootstrap-recovery.<timestamp>` and creates a fresh single-node Nomad server state. It refuses this archive path after the control plane has been marked ready.
 - Nomad runs as root in v1 because the same agent acts as a client and must manage Docker workloads, cgroups, and allocation mounts on the node. Network exposure is still limited by WireGuard binding, TLS, ACLs, and the public firewall.
 - Traefik receives a Nomad token through `/etc/traefik/traefik.env`, readable only by the `traefik` user.
 - Traefik receives only the public Nomad CA certificate, not Nomad private keys.
