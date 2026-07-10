@@ -138,11 +138,20 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")
 	}
+	if !strings.Contains(bootstrap, "validate_nomad_token") || !strings.Contains(bootstrap, `"$NOMAD_ADDR/v1/services"`) {
+		t.Fatal("bootstrap should validate the Nomad token before starting Traefik")
+	}
+	if !strings.Contains(bootstrap, "render_traefik_config") || !strings.Contains(bootstrap, "/etc/traefik/traefik.yml.template") {
+		t.Fatal("bootstrap should render Traefik config with the verified Nomad token")
+	}
 	if !strings.Contains(traefikConfig, "token: \"__NOMAD_TOKEN__\"") {
 		t.Fatal("traefik config should use a systemd-safe token placeholder")
 	}
-	if !strings.Contains(traefikService, "s/__NOMAD_TOKEN__/${NOMAD_TOKEN}/g") {
-		t.Fatal("traefik service should replace the systemd-safe token placeholder")
+	if strings.Contains(traefikService, "EnvironmentFile=") || strings.Contains(traefikService, "ExecStartPre=") {
+		t.Fatal("traefik service should read the rendered config directly")
+	}
+	if !strings.Contains(traefikService, "--configFile=/etc/traefik/traefik.yml") {
+		t.Fatal("traefik service should use the rendered config file")
 	}
 }
 

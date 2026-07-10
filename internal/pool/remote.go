@@ -84,6 +84,21 @@ printf 'nomad nodes:\n'
 nomad node status
 printf 'nomad jobs:\n'
 nomad job status
+printf 'nomad services api:\n'
+tmp_body="$(mktemp)"
+code="$(curl -fsS -o "$tmp_body" -w '%{http_code}' --cacert /etc/nomad.d/tls/nomad-agent-ca.pem -H "X-Nomad-Token: $token" "$NOMAD_ADDR/v1/services" 2>/dev/null || true)"
+printf 'GET /v1/services -> %s\n' "$code"
+if [ "$code" != "200" ]; then
+  sed -n '1,20p' "$tmp_body" || true
+fi
+rm -f "$tmp_body"
+printf 'traefik config:\n'
+if sudo grep -q '__NOMAD_TOKEN__' /etc/traefik/traefik.yml 2>/dev/null; then
+  printf 'still contains token placeholder\n'
+else
+  printf 'token rendered into /etc/traefik/traefik.yml\n'
+fi
+sudo grep -n 'token:' /etc/traefik/traefik.yml 2>/dev/null | sed 's/token:.*/token: <redacted>/' || true
 printf 'local ingress smoke:\n'
 curl -fsS -H 'Host: sample-api.pool.test' http://127.0.0.1/ | head -20 || true
 printf 'traefik recent logs:\n'

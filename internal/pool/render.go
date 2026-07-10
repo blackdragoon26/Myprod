@@ -410,16 +410,50 @@ bootstrap_nomad_acl() {
   $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
 }
 
-render_traefik_env() {
+validate_nomad_token() {
+  token="$1"
+  tmp_body="$(mktemp)"
+  http_code="$($SUDO curl -fsS -o "$tmp_body" -w '%%{http_code}' \
+    --cacert /etc/nomad.d/tls/nomad-agent-ca.pem \
+    -H "X-Nomad-Token: $token" \
+    "$NOMAD_ADDR/v1/services" 2>/dev/null || true)"
+  if [ "$http_code" != "200" ]; then
+    echo "Nomad token validation failed for /v1/services with HTTP $http_code" >&2
+    $SUDO cat "$tmp_body" >&2 || true
+    $SUDO rm -f "$tmp_body"
+    die "Traefik cannot use the saved Nomad token"
+  fi
+  $SUDO rm -f "$tmp_body"
+}
+
+render_traefik_config() {
   token="$(read_nomad_token)"
+  [ -n "$token" ] || die "Nomad token is empty; cannot render Traefik config"
+  validate_nomad_token "$token"
   $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik
   $SUDO install -m 0644 -o traefik -g traefik /etc/nomad.d/tls/nomad-agent-ca.pem /etc/traefik/nomad-agent-ca.pem
-  {
-    echo "NOMAD_TOKEN=$token"
-    echo "NOMAD_CACERT=/etc/traefik/nomad-agent-ca.pem"
-  } | $SUDO tee /etc/traefik/traefik.env >/dev/null
-  $SUDO chmod 0640 /etc/traefik/traefik.env
-  $SUDO chown traefik:traefik /etc/traefik/traefik.env
+  $SUDO install -m 0640 -o root -g traefik /dev/null /etc/traefik/traefik.yml
+  $SUDO tee /etc/traefik/traefik.yml >/dev/null <<TRAEFIKEOF
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  nomad:
+    endpoint:
+      address: "$NOMAD_ADDR"
+      token: "$token"
+      tls:
+        ca: "/etc/traefik/nomad-agent-ca.pem"
+    exposedByDefault: false
+
+api:
+  dashboard: false
+TRAEFIKEOF
+  $SUDO chown root:traefik /etc/traefik/traefik.yml
+  $SUDO chmod 0640 /etc/traefik/traefik.yml
 }
 
 require_root
@@ -455,7 +489,7 @@ $SUDO install -d -m 0700 -o root -g root "$POOLCTL_STATE_DIR" "$NOMAD_ACL_DIR"
 $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik /var/lib/traefik
 $SUDO install -m 0640 -o nomad -g nomad nomad/server.hcl /etc/nomad.d/server.hcl
 $SUDO install -m 0644 systemd/nomad.service /etc/systemd/system/nomad.service
-$SUDO install -m 0644 traefik/traefik.yml /etc/traefik/traefik.yml
+$SUDO install -m 0640 -o root -g traefik traefik/traefik.yml /etc/traefik/traefik.yml.template
 $SUDO install -m 0644 systemd/traefik.service /etc/systemd/system/traefik.service
 
 if [ -x ./poolctl ]; then
@@ -479,7 +513,7 @@ if ! $SUDO systemctl restart nomad; then
   die "failed to restart Nomad"
 fi
 bootstrap_nomad_acl
-render_traefik_env
+render_traefik_config
 $SUDO systemctl enable traefik
 $SUDO systemctl restart traefik
 if [ -x /usr/local/bin/poolctl ]; then
@@ -589,11 +623,7 @@ After=network-online.target nomad.service
 [Service]
 User=traefik
 Group=traefik
-EnvironmentFile=/etc/traefik/traefik.env
-RuntimeDirectory=traefik
-RuntimeDirectoryMode=0750
-ExecStartPre=/bin/sh -c 'umask 077; sed "s/__NOMAD_TOKEN__/${NOMAD_TOKEN}/g" /etc/traefik/traefik.yml > /run/traefik/traefik.yml'
-ExecStart=/usr/local/bin/traefik --configFile=/run/traefik/traefik.yml
+ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
 Restart=on-failure
 RestartSec=2
 AmbientCapabilities=CAP_NET_BIND_SERVICE

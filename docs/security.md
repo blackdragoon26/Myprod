@@ -18,7 +18,7 @@ This project assumes all VPS machines are public internet hosts, so scheduler an
 - If Nomad ACLs were bootstrapped during an interrupted setup but no local token was saved, the bootstrap script writes Nomad's reported reset index to Nomad's ACL reset file, restarts Nomad, and then stores a fresh management token.
 - If that reset-file recovery still fails before `/var/lib/poolctl/control-plane.ready` exists, the bootstrap archives `/opt/nomad/server` to `/opt/nomad/server.bootstrap-recovery.<timestamp>` and creates a fresh single-node Nomad server state. It refuses this archive path after the control plane has been marked ready.
 - Nomad runs as root in v1 because the same agent acts as a client and must manage Docker workloads, cgroups, and allocation mounts on the node. Network exposure is still limited by WireGuard binding, TLS, ACLs, and the public firewall.
-- Traefik receives a Nomad token through `/etc/traefik/traefik.env`, readable only by the `traefik` user.
+- Traefik receives a verified Nomad token in `/etc/traefik/traefik.yml`, readable only by root and the `traefik` group.
 - Traefik receives only the public Nomad CA certificate, not Nomad private keys.
 
 ## SSH
