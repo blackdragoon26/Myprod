@@ -247,18 +247,19 @@ EOF
 }
 
 bootstrap_nomad_acl() {
-  export NOMAD_ADDR="$NOMAD_ADDR"
-  export NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem"
+  nomad_cli() {
+    $SUDO env NOMAD_ADDR="$NOMAD_ADDR" NOMAD_CACERT="/etc/nomad.d/tls/nomad-agent-ca.pem" nomad "$@"
+  }
   if [ -f /etc/nomad.d/bootstrap.token ]; then
     return
   fi
   for _ in $(seq 1 30); do
-    if nomad status >/dev/null 2>&1; then
+    if nomad_cli status >/dev/null 2>&1; then
       break
     fi
     sleep 2
   done
-  nomad acl bootstrap -json | $SUDO tee /etc/nomad.d/bootstrap-token.json >/dev/null
+  nomad_cli acl bootstrap -json | $SUDO tee /etc/nomad.d/bootstrap-token.json >/dev/null
   $SUDO chmod 0600 /etc/nomad.d/bootstrap-token.json
   token="$(grep -o '"SecretID"[[:space:]]*:[[:space:]]*"[^"]*"' /etc/nomad.d/bootstrap-token.json | head -1 | sed 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')"
   [ -n "$token" ] || die "failed to parse Nomad bootstrap token"
