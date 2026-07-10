@@ -53,6 +53,15 @@ Consul can be introduced later if the project needs KV storage, Connect, or mult
 - `frozen`: existing workloads stay, but new app placement is blocked.
 - `draining`: node is frozen and workloads should be moved away.
 
+## Operator Flow
+
+V1 is intentionally SSH-first:
+
+1. `poolctl bootstrap-control-plane --apply` installs Oracle's base runtime.
+2. `poolctl control-plane status` verifies Nomad, Traefik, WireGuard, nodes, and jobs.
+3. `poolctl app deploy <app>` renders the Nomad job, copies it to Oracle, and runs it through Nomad's WireGuard-bound HTTPS API.
+4. Later worker-node commands will add more Nomad clients behind the same Oracle ingress.
+
 ## WireGuard Lifecycle
 
 The intended implementation:
