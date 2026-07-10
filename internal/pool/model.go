@@ -98,6 +98,11 @@ func (s *State) SetDraining(name string, draining bool) {
 	s.Nodes[name] = node
 }
 
+func (s *State) SetApp(name, node, status string) {
+	s.ensure()
+	s.Apps[name] = AppState{Node: node, Status: status}
+}
+
 func (s *State) ensure() {
 	if s.Nodes == nil {
 		s.Nodes = make(map[string]NodeState)

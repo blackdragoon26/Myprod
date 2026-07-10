@@ -16,11 +16,13 @@ Usage:
   poolctl bootstrap-control-plane --dry-run
   poolctl bootstrap-control-plane --apply
   poolctl doctor
+  poolctl control-plane status
   poolctl node list
   poolctl node freeze <node>
   poolctl node unfreeze <node>
   poolctl node drain <node>
   poolctl app render <app>
+  poolctl app deploy <app>
   poolctl app status <app>
   poolctl guard check
 
@@ -42,6 +44,8 @@ func Run(args []string) error {
 		return render(store)
 	case "bootstrap-control-plane":
 		return bootstrapControlPlane(store, args[1:])
+	case "control-plane":
+		return controlPlane(store, args[1:])
 	case "doctor":
 		return doctor(store)
 	case "node":
@@ -53,6 +57,21 @@ func Run(args []string) error {
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage)
 	}
+}
+
+func controlPlane(store pool.Store, args []string) error {
+	if len(args) != 1 || args[0] != "status" {
+		return errors.New("usage: poolctl control-plane status")
+	}
+	cfg, _, err := store.Load()
+	if err != nil {
+		return err
+	}
+	node, ok := pool.ControlPlaneNode(cfg)
+	if !ok {
+		return errors.New("config has no control-plane node")
+	}
+	return pool.CheckControlPlaneStatus(node)
 }
 
 func render(store pool.Store) error {
@@ -220,9 +239,48 @@ func app(store pool.Store, args []string) error {
 		}
 		fmt.Printf("rendered %s/%s\n", outDir, file.Path)
 		return nil
+	case "deploy":
+		if len(args) != 2 {
+			return errors.New("usage: poolctl app deploy <app>")
+		}
+		return deployApp(store, args[1])
 	default:
 		return fmt.Errorf("unknown app subcommand %q", args[0])
 	}
+}
+
+func deployApp(store pool.Store, appName string) error {
+	cfg, state, err := store.Load()
+	if err != nil {
+		return err
+	}
+	node, ok := pool.ControlPlaneNode(cfg)
+	if !ok {
+		return errors.New("config has no control-plane node")
+	}
+	app, ok := cfg.FindApp(appName)
+	if !ok {
+		return fmt.Errorf("unknown app %q", appName)
+	}
+	file, err := pool.RenderAppJob(cfg, appName)
+	if err != nil {
+		return err
+	}
+	const outDir = "work/rendered"
+	if err := pool.WriteRendered(outDir, []pool.RenderedFile{file}); err != nil {
+		return err
+	}
+	localPath := outDir + "/" + file.Path
+	fmt.Printf("rendered %s\n", localPath)
+	if err := pool.DeployAppJob(node, app, localPath, "~/poolctl-jobs"); err != nil {
+		return err
+	}
+	placement := app.PreferNode
+	if placement == "" {
+		placement = node.Name
+	}
+	state.SetApp(app.Name, placement, "deployed")
+	return store.SaveState(state)
 }
 
 func guard(store pool.Store, args []string) error {

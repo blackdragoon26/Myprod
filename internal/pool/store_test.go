@@ -45,6 +45,10 @@ func TestStateTransitions(t *testing.T) {
 	if state.Nodes["oracle-main"].Frozen {
 		t.Fatal("expected unfrozen node")
 	}
+	state.SetApp("sample-api", "oracle-main", "deployed")
+	if state.Apps["sample-api"].Node != "oracle-main" || state.Apps["sample-api"].Status != "deployed" {
+		t.Fatal("expected app deployment state")
+	}
 }
 
 func TestRenderControlPlaneRequiresConnectionFields(t *testing.T) {
