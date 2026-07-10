@@ -39,10 +39,12 @@ go run ./cmd/poolctl render
 go run ./cmd/poolctl bootstrap-control-plane --dry-run
 go run ./cmd/poolctl bootstrap-control-plane --apply
 go run ./cmd/poolctl doctor
+go run ./cmd/poolctl control-plane status
 go run ./cmd/poolctl node list
 go run ./cmd/poolctl node freeze oracle-main
 go run ./cmd/poolctl app status sample-api
 go run ./cmd/poolctl app render sample-api
+go run ./cmd/poolctl app deploy sample-api
 go run ./cmd/poolctl guard check
 ```
 
@@ -58,12 +60,13 @@ go run ./cmd/poolctl bootstrap-control-plane --dry-run
 1. Local config/state and CLI behavior.
 2. Nomad job generation.
 3. Traefik provider configuration.
-4. WireGuard key/IP lifecycle.
-5. SSH bootstrap for Oracle control plane.
+4. SSH bootstrap for Oracle control plane.
+5. Deploy first app through Nomad and Traefik.
 6. SSH bootstrap for worker nodes.
 7. Cloudflare DNS sync.
 8. SOPS/age secret injection.
 9. Guard systemd timer.
+10. WireGuard key/IP lifecycle for joined workers.
 
 ## Current Oracle Target
 
