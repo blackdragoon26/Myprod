@@ -76,10 +76,18 @@ func CheckControlPlaneStatus(node Node) error {
 	target := fmt.Sprintf("%s@%s", node.SSHUser, node.PublicIP)
 	cmd := remoteNomadCommand(node, `printf 'systemd: '
 systemctl is-active nomad traefik wg-quick@wg0 | paste -sd ',' - || true
+printf 'listeners:\n'
+sudo ss -ltnp | grep -E ':(80|443|4646|4647|4648)\b' || true
+printf 'ufw:\n'
+sudo ufw status verbose || true
 printf 'nomad nodes:\n'
 nomad node status
 printf 'nomad jobs:\n'
-nomad job status`)
+nomad job status
+printf 'local ingress smoke:\n'
+curl -fsS -H 'Host: sample-api.pool.test' http://127.0.0.1/ | head -20 || true
+printf 'traefik recent logs:\n'
+sudo journalctl -u traefik -n 60 --no-pager || true`)
 	return runLogged("ssh", "-i", key, target, cmd)
 }
 
