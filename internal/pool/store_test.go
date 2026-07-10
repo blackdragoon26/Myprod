@@ -96,6 +96,9 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "migrate_nomad_acl_files") {
 		t.Fatal("bootstrap should migrate older ACL token files")
 	}
+	if !strings.Contains(bootstrap, `"$NOMAD_ADDR/v1/status/leader" 2>/dev/null || true`) {
+		t.Fatal("nomad readiness HTTP fallback should tolerate connection-refused during startup")
+	}
 }
 
 func TestRenderAppJob(t *testing.T) {
