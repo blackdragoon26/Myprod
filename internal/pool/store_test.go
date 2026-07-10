@@ -51,6 +51,22 @@ func TestStateTransitions(t *testing.T) {
 	}
 }
 
+func TestNormalizeRemoteHome(t *testing.T) {
+	cases := map[string]string{
+		"~":                  ".",
+		"~/poolctl-jobs":     "poolctl-jobs",
+		"$HOME":              ".",
+		"$HOME/poolctl-jobs": "poolctl-jobs",
+		"/opt/poolctl-jobs":  "/opt/poolctl-jobs",
+	}
+
+	for input, want := range cases {
+		if got := normalizeRemoteHome(input); got != want {
+			t.Fatalf("normalizeRemoteHome(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
 func TestRenderControlPlaneRequiresConnectionFields(t *testing.T) {
 	_, err := RenderControlPlane(Config{
 		Nodes: []Node{{
