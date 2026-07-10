@@ -126,6 +126,7 @@ POOLCTL_READY_MARKER="$POOLCTL_STATE_DIR/control-plane.ready"
 NOMAD_ACL_DIR="$POOLCTL_STATE_DIR/nomad-acl"
 NOMAD_BOOTSTRAP_TOKEN_FILE="$NOMAD_ACL_DIR/bootstrap.token"
 NOMAD_BOOTSTRAP_JSON_FILE="$NOMAD_ACL_DIR/bootstrap-token.json"
+NOMAD_TRAEFIK_TOKEN=""
 
 die() {
   echo "ERROR: $*" >&2
@@ -431,6 +432,7 @@ bootstrap_nomad_acl() {
   migrate_nomad_acl_files
   existing_token="$(read_nomad_token)"
   if [ -n "$existing_token" ] && nomad_token_can_read_services "$existing_token"; then
+    NOMAD_TRAEFIK_TOKEN="$existing_token"
     return
   fi
   if [ -n "$existing_token" ]; then
@@ -448,6 +450,7 @@ bootstrap_nomad_acl() {
   echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
   $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
   validate_nomad_token "$token"
+  NOMAD_TRAEFIK_TOKEN="$token"
 }
 
 validate_nomad_token() {
@@ -467,7 +470,10 @@ validate_nomad_token() {
 }
 
 render_traefik_config() {
-  token="$(read_nomad_token)"
+  token="$NOMAD_TRAEFIK_TOKEN"
+  if [ -z "$token" ]; then
+    token="$(read_nomad_token)"
+  fi
   [ -n "$token" ] || die "Nomad token is empty; cannot render Traefik config"
   validate_nomad_token "$token"
   $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik

@@ -141,6 +141,9 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "nomad_token_can_read_services") {
 		t.Fatal("bootstrap should verify existing Nomad tokens before reusing them")
 	}
+	if !strings.Contains(bootstrap, `NOMAD_TRAEFIK_TOKEN="$token"`) || !strings.Contains(bootstrap, `token="$NOMAD_TRAEFIK_TOKEN"`) {
+		t.Fatal("bootstrap should pass the verified Nomad token directly into Traefik rendering")
+	}
 	if !strings.Contains(bootstrap, `sed -n 's/.*"SecretID"`) {
 		t.Fatal("bootstrap should parse SecretID from one-line Nomad JSON")
 	}
