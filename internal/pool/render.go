@@ -203,16 +203,17 @@ WGEOF
 
 render_nomad_tls() {
   $SUDO install -d -m 0750 -o nomad -g nomad /etc/nomad.d/tls
+  tls_tmp="$(mktemp -d)"
+  trap '$SUDO rm -rf "$tls_tmp"' RETURN
   if [ ! -f /etc/nomad.d/tls/nomad-agent-ca-key.pem ]; then
-    openssl genrsa -out /tmp/nomad-agent-ca-key.pem 4096
-    openssl req -x509 -new -nodes -key /tmp/nomad-agent-ca-key.pem -sha256 -days 3650 \
-      -subj "/CN=poolctl-nomad-agent-ca" -out /tmp/nomad-agent-ca.pem
-    $SUDO install -m 0600 -o root -g root /tmp/nomad-agent-ca-key.pem /etc/nomad.d/tls/nomad-agent-ca-key.pem
-    $SUDO install -m 0644 -o nomad -g nomad /tmp/nomad-agent-ca.pem /etc/nomad.d/tls/nomad-agent-ca.pem
-    rm -f /tmp/nomad-agent-ca-key.pem /tmp/nomad-agent-ca.pem
+    openssl genrsa -out "$tls_tmp/nomad-agent-ca-key.pem" 4096
+    openssl req -x509 -new -nodes -key "$tls_tmp/nomad-agent-ca-key.pem" -sha256 -days 3650 \
+      -subj "/CN=poolctl-nomad-agent-ca" -out "$tls_tmp/nomad-agent-ca.pem"
+    $SUDO install -m 0600 -o root -g root "$tls_tmp/nomad-agent-ca-key.pem" /etc/nomad.d/tls/nomad-agent-ca-key.pem
+    $SUDO install -m 0644 -o nomad -g nomad "$tls_tmp/nomad-agent-ca.pem" /etc/nomad.d/tls/nomad-agent-ca.pem
   fi
 
-  cat >/tmp/nomad-server.cnf <<EOF
+  cat >"$tls_tmp/nomad-server.cnf" <<EOF
 [req]
 default_bits = 2048
 prompt = no
@@ -233,17 +234,16 @@ IP.1 = 127.0.0.1
 IP.2 = %s
 EOF
 
-  openssl genrsa -out /tmp/global-server-nomad-key.pem 2048
-  openssl req -new -key /tmp/global-server-nomad-key.pem -out /tmp/global-server-nomad.csr -config /tmp/nomad-server.cnf
-  $SUDO openssl x509 -req -in /tmp/global-server-nomad.csr \
+  openssl genrsa -out "$tls_tmp/global-server-nomad-key.pem" 2048
+  openssl req -new -key "$tls_tmp/global-server-nomad-key.pem" -out "$tls_tmp/global-server-nomad.csr" -config "$tls_tmp/nomad-server.cnf"
+  $SUDO openssl x509 -req -in "$tls_tmp/global-server-nomad.csr" \
     -CA /etc/nomad.d/tls/nomad-agent-ca.pem \
     -CAkey /etc/nomad.d/tls/nomad-agent-ca-key.pem \
-    -CAcreateserial -out /tmp/global-server-nomad.pem -days 825 -sha256 \
-    -extensions req_ext -extfile /tmp/nomad-server.cnf
+    -CAcreateserial -out "$tls_tmp/global-server-nomad.pem" -days 825 -sha256 \
+    -extensions req_ext -extfile "$tls_tmp/nomad-server.cnf"
 
-  $SUDO install -m 0640 -o nomad -g nomad /tmp/global-server-nomad-key.pem /etc/nomad.d/tls/global-server-nomad-key.pem
-  $SUDO install -m 0644 -o nomad -g nomad /tmp/global-server-nomad.pem /etc/nomad.d/tls/global-server-nomad.pem
-  rm -f /tmp/global-server-nomad-key.pem /tmp/global-server-nomad.csr /tmp/global-server-nomad.pem /tmp/nomad-server.cnf
+  $SUDO install -m 0640 -o nomad -g nomad "$tls_tmp/global-server-nomad-key.pem" /etc/nomad.d/tls/global-server-nomad-key.pem
+  $SUDO install -m 0644 -o nomad -g nomad "$tls_tmp/global-server-nomad.pem" /etc/nomad.d/tls/global-server-nomad.pem
 }
 
 bootstrap_nomad_acl() {
