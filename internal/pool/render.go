@@ -272,6 +272,12 @@ parse_nomad_secret_id() {
   $SUDO grep -o '"SecretID"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" | head -1 | sed 's/.*"SecretID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
 }
 
+write_nomad_bootstrap_json() {
+  output="$1"
+  printf '%%s\n' "$output" | $SUDO tee "$NOMAD_BOOTSTRAP_JSON_FILE" >/dev/null
+  $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_JSON_FILE"
+}
+
 migrate_nomad_acl_files() {
   $SUDO install -d -m 0700 -o root -g root "$NOMAD_ACL_DIR"
 
@@ -293,6 +299,26 @@ migrate_nomad_acl_files() {
     [ -n "$token" ] && echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
     [ -f "$NOMAD_BOOTSTRAP_TOKEN_FILE" ] && $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_TOKEN_FILE"
   fi
+}
+
+run_nomad_acl_bootstrap() {
+  if output="$(nomad_cli acl bootstrap -json 2>&1)"; then
+    write_nomad_bootstrap_json "$output"
+    return
+  fi
+
+  reset_index="$(printf '%%s\n' "$output" | sed -n 's/.*reset index: \([0-9][0-9]*\).*/\1/p' | head -1)"
+  if [ -z "$reset_index" ]; then
+    printf '%%s\n' "$output" >&2
+    die "failed to bootstrap Nomad ACL"
+  fi
+
+  echo "Nomad ACL is already bootstrapped but no local token was found; resetting bootstrap with reset index $reset_index."
+  output="$(nomad_cli acl bootstrap -json -reset -reset-index="$reset_index" 2>&1)" || {
+    printf '%%s\n' "$output" >&2
+    die "failed to reset Nomad ACL bootstrap"
+  }
+  write_nomad_bootstrap_json "$output"
 }
 
 print_nomad_diagnostics() {
@@ -329,8 +355,7 @@ bootstrap_nomad_acl() {
     return
   fi
   wait_for_nomad
-  nomad_cli acl bootstrap -json | $SUDO tee "$NOMAD_BOOTSTRAP_JSON_FILE" >/dev/null
-  $SUDO chmod 0600 "$NOMAD_BOOTSTRAP_JSON_FILE"
+  run_nomad_acl_bootstrap
   token="$(parse_nomad_secret_id "$NOMAD_BOOTSTRAP_JSON_FILE")"
   [ -n "$token" ] || die "failed to parse Nomad bootstrap token"
   echo "$token" | $SUDO tee "$NOMAD_BOOTSTRAP_TOKEN_FILE" >/dev/null
