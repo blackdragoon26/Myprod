@@ -505,7 +505,13 @@ render_traefik_config() {
   fi
   [ -n "$token" ] || die "Nomad token is empty; cannot render Traefik config"
   validate_nomad_token "$token"
-  $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik
+  $SUDO install -d -m 0750 -o traefik -g traefik /etc/traefik /var/lib/traefik
+  if [ ! -f /var/lib/traefik/acme.json ]; then
+    $SUDO install -m 0600 -o traefik -g traefik /dev/null /var/lib/traefik/acme.json
+  else
+    $SUDO chown traefik:traefik /var/lib/traefik/acme.json
+    $SUDO chmod 0600 /var/lib/traefik/acme.json
+  fi
   $SUDO install -m 0644 -o traefik -g traefik /etc/nomad.d/tls/nomad-agent-ca.pem /etc/traefik/nomad-agent-ca.pem
   $SUDO install -m 0640 -o root -g traefik /dev/null /etc/traefik/traefik.yml
   $SUDO tee /etc/traefik/traefik.yml >/dev/null <<TRAEFIKEOF
@@ -526,6 +532,13 @@ providers:
 
 api:
   dashboard: false
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      storage: "/var/lib/traefik/acme.json"
+      httpChallenge:
+        entryPoint: web
 TRAEFIKEOF
   $SUDO chown root:traefik /etc/traefik/traefik.yml
   $SUDO chmod 0640 /etc/traefik/traefik.yml
@@ -664,6 +677,13 @@ providers:
 
 api:
   dashboard: false
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      storage: "/var/lib/traefik/acme.json"
+      httpChallenge:
+        entryPoint: web
 `, node.OverlayIP)
 }
 
@@ -784,6 +804,7 @@ func renderNomadJob(app App) string {
         "traefik.http.routers.%s-secure.rule=Host(`+"`%s`"+`)",
         "traefik.http.routers.%s-secure.entrypoints=websecure",
         "traefik.http.routers.%s-secure.tls=true",
+        "traefik.http.routers.%s-secure.tls.certresolver=letsencrypt",
       ]
 
       check {
@@ -809,7 +830,7 @@ func renderNomadJob(app App) string {
     }
   }
 }
-`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Image)
+`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.Image)
 }
 
 func userOrUbuntu(node Node) string {

@@ -5,12 +5,16 @@ This document is the full working context for continuing this project in a new C
 Use it as the first message/context paste if the current chat becomes too messy:
 
 ```txt
-Read docs/HANDOFF_CONTEXT.md first. Continue the Myprod/poolctl infrastructure project from the current repo state. Do not restart the project. The app stack is already running inside Oracle; public ingress to Oracle public IP 140.245.5.201 on TCP 80/443 is fixed. Continue with real domain, TLS, and Cloudflare DNS sync work.
+Read docs/HANDOFF_CONTEXT.md first. Continue the Myprod/poolctl infrastructure project from the current repo state. Do not restart the project. The app stack is already running inside Oracle; public HTTP/HTTPS ingress works at api.sankalpjha.dev with a real Let's Encrypt certificate. Continue with the authenticated GUI dashboard or worker-join flow.
 ```
 
 Latest update, 2026-07-11 IST:
 
 - Public ingress to `140.245.5.201` on TCP `80` and `443` is now working.
+- Netlify DNS has `api.sankalpjha.dev` as an `A` record pointing to `140.245.5.201`; root `sankalpjha.dev` and `www.sankalpjha.dev` remain on the Netlify portfolio.
+- `sample-api` is deployed with Traefik host rule `Host(api.sankalpjha.dev)`.
+- Traefik is configured with a Let's Encrypt HTTP-challenge resolver named `letsencrypt`.
+- `https://api.sankalpjha.dev/` returns `200 OK` with a valid Let's Encrypt certificate for `api.sankalpjha.dev`.
 - Root cause was Oracle's host `iptables` INPUT chain: it accepted SSH and then rejected traffic before UFW's allow chains ran.
 - Added persistent host rules before the reject:
   - `poolctl-ingress-http` for TCP `80`
@@ -18,8 +22,8 @@ Latest update, 2026-07-11 IST:
   - `poolctl-wireguard` for UDP `51820`
 - Rebuilt `work/poolctl`, regenerated `work/rendered`, and updated bootstrap rendering so future bootstraps insert these host firewall rules.
 - Verified public smoke:
-  - `curl -H 'Host: sample-api.pool.test' http://140.245.5.201/` returns `200 OK`.
-  - `curl -k -H 'Host: sample-api.pool.test' https://140.245.5.201/` reaches Traefik and returns `200 OK` with Traefik's default self-signed cert.
+  - `curl http://api.sankalpjha.dev/` returns `200 OK`.
+  - `curl https://api.sankalpjha.dev/` returns `200 OK` and verifies the certificate.
 
 ## User Goal
 
@@ -87,7 +91,7 @@ Note: Some commits may not have pushed to GitHub because this Codex environment 
 V1 architecture:
 
 ```txt
-Cloudflare DNS -> Oracle Traefik ingress -> Nomad apps on Oracle/workers over WireGuard
+Netlify DNS -> Oracle Traefik ingress -> Nomad apps on Oracle/workers over WireGuard
 ```
 
 Chosen stack:
@@ -96,7 +100,7 @@ Chosen stack:
 - Scheduler: Nomad
 - Ingress: Traefik
 - Overlay/private network: WireGuard
-- DNS target: Cloudflare later
+- DNS target: Netlify DNS for current `sankalpjha.dev`; Cloudflare sync can be added later
 - Secrets target: SOPS + age later
 - Monitoring/resource guard: local `poolctl guard`
 
@@ -141,7 +145,8 @@ RAM: about 24 GB
 Current public ingress expectation:
 
 ```sh
-curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+curl http://api.sankalpjha.dev/
+curl https://api.sankalpjha.dev/
 ```
 
 Previous failing state:
@@ -238,7 +243,7 @@ node:
 app:
   name: sample-api
   image: traefik/whoami:v1.11.0
-  domain: sample-api.pool.test
+  domain: api.sankalpjha.dev
   port: 80
   placement:
     prefer_node: oracle-main
@@ -284,7 +289,7 @@ token rendered into /etc/traefik/traefik.yml
 
 local ingress smoke:
 Hostname: 963a82d7038c
-Host: sample-api.pool.test
+Host: api.sankalpjha.dev
 ...
 ```
 
@@ -299,10 +304,11 @@ Meaning:
 - Traefik routing works locally from inside VM.
 - UFW allows 80/443/51820/22.
 
-Current failing command:
+Previous failing public smoke used the placeholder host before the real domain was connected. Current regression commands are:
 
 ```sh
-curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+curl http://api.sankalpjha.dev/
+curl https://api.sankalpjha.dev/
 ```
 
 Failure:
@@ -313,21 +319,15 @@ curl: (7) Failed to connect to 140.245.5.201 port 80
 
 Interpretation:
 
-- Since local ingress works and Traefik listens on `*:80`, the remaining failure is public path to the VM.
-- Most likely OCI network config mismatch:
-  - TCP 80/443 opened on wrong security list
-  - instance attached to an NSG that still blocks TCP 80/443
-  - route/subnet/VNIC mismatch
-  - public IP association oddity
-  - less likely: provider edge delay or stateful firewall issue
+- Local, private-interface, public HTTP, and public HTTPS ingress now work. If this regresses, inspect DNS first, then Oracle VCN/NSG rules, then the host `iptables` chain before debugging Nomad or Docker.
 
 ## Current Next Step
 
-Public ingress is fixed. The next engineering step is HTTPS/domain work:
+Public ingress and HTTPS are fixed. The next engineering step is one of:
 
-- point a real Cloudflare-managed domain/subdomain at `140.245.5.201`
-- configure Traefik ACME or Cloudflare-origin TLS
-- then add `poolctl dns sync`
+- build the authenticated `poolctl` web dashboard on `admin.sankalpjha.dev`
+- add worker join flow over WireGuard
+- optionally add DNS sync for Netlify or Cloudflare later
 
 For regression checks, run:
 
@@ -336,7 +336,8 @@ cd /Users/sankalpjha/Documents/Codex/2026-07-08/okay-so/Myprod
 
 go build -a -o work/poolctl ./cmd/poolctl
 ./work/poolctl control-plane status
-curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+curl http://api.sankalpjha.dev/
+curl https://api.sankalpjha.dev/
 ```
 
 Do not redeploy `sample-api` unless it stops running.
@@ -599,20 +600,21 @@ Inside-VM smoke:
 
 ```sh
 ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
-  "curl -v -H 'Host: sample-api.pool.test' http://127.0.0.1/"
+  "curl -v -H 'Host: api.sankalpjha.dev' http://127.0.0.1/"
 ```
 
 Private interface smoke:
 
 ```sh
 ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
-  "curl -v -H 'Host: sample-api.pool.test' http://10.0.0.237/"
+  "curl -v -H 'Host: api.sankalpjha.dev' http://10.0.0.237/"
 ```
 
 Public smoke:
 
 ```sh
-curl -v -H 'Host: sample-api.pool.test' http://140.245.5.201/
+curl -v http://api.sankalpjha.dev/
+curl -v https://api.sankalpjha.dev/
 ```
 
 If direct SSH works from a less restricted Codex, use it to inspect OCI-facing network state faster.
@@ -640,28 +642,23 @@ The user is frustrated. Be direct and reassuring:
 
 - The core app stack is working.
 - We are not starting over.
-- The current problem is narrowed to Oracle public ingress.
-- No more Nomad/Traefik redeploys are needed unless status regresses.
-- Ask for `control-plane status`, especially `private-interface ingress smoke`.
+- Public ingress and TLS are no longer the current blocker.
+- No more Nomad/Traefik redeploys are needed unless status regresses or app host rules change.
 
-Avoid vague “wait more” advice. The public curl is immediate connection refused, so this is not normal propagation delay.
+## Next Engineering Tasks
 
-## Next Engineering Tasks After Public Ingress
-
-Once public curl works:
-
-1. Add HTTPS path:
-   - real domain in Cloudflare
-   - Traefik ACME or Cloudflare origin setup
-2. Add `poolctl dns sync`.
-3. Add worker join flow:
+1. Add authenticated GUI dashboard:
+   - deploy at `admin.sankalpjha.dev`
+   - require auth before exposing control actions
+2. Add worker join flow:
    - generate WireGuard keys
    - assign overlay IP
    - install Nomad client
    - add peer to Oracle
-4. Add app move/drain behavior.
-5. Add SOPS + age env injection.
-6. Add real guard thresholds and remote guard status.
+3. Add app move/drain behavior.
+4. Add SOPS + age env injection.
+5. Add real guard thresholds and remote guard status.
+6. Add optional DNS sync for Netlify or Cloudflare.
 7. Make README portfolio-ready with architecture diagram and demo commands.
 
 ## Current Quick Summary
@@ -679,6 +676,7 @@ Docker sample app: running
 Traefik local route: works
 Nomad token/ACL: recovered and works
 Public HTTP ingress: works on 140.245.5.201:80
-Public HTTPS ingress: reaches Traefik on 140.245.5.201:443 with default cert
-Next step: real domain + TLS + Cloudflare DNS sync
+Public domain: api.sankalpjha.dev points to 140.245.5.201
+Public HTTPS ingress: works at https://api.sankalpjha.dev/ with Let's Encrypt
+Next step: authenticated GUI dashboard or worker join flow
 ```

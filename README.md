@@ -5,7 +5,7 @@
 The project is designed around a practical v1:
 
 ```txt
-Cloudflare DNS -> Oracle ingress -> Nomad apps on Oracle/workers over WireGuard
+DNS -> Oracle Traefik ingress -> Nomad apps on Oracle/workers over WireGuard
 ```
 
 The first target is personal projects, not enterprise high availability.
@@ -24,7 +24,7 @@ The first target is personal projects, not enterprise high availability.
 - Scheduler: Nomad
 - Ingress: Traefik on Oracle
 - Private networking: WireGuard
-- DNS: Cloudflare
+- DNS: Netlify DNS for the current `sankalpjha.dev` domain; Cloudflare sync can be added later
 - Secrets: SOPS + age encrypted env files
 
 Consul, provider API provisioning, per-node ingress, automatic database failover, and backup automation are intentionally out of v1.
@@ -51,10 +51,10 @@ go run ./cmd/poolctl guard check
 The default `sample-api` uses `traefik/whoami` so the first deployment can prove the control plane works before you bring a real backend image. After deploying it, smoke-test centralized ingress with:
 
 ```sh
-curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+curl https://api.sankalpjha.dev/
 ```
 
-If that curl times out while `poolctl control-plane status` shows Nomad/Traefik active and the job is healthy, open TCP port `80` in the Oracle VCN security list or NSG attached to the instance. Add TCP `443` there too before using HTTPS domains. If the error is immediate `Connection refused` while Traefik is listening on `*:80`, inspect Oracle's host `iptables` INPUT chain; some images reject public traffic before UFW's allow rules run. The generated bootstrap now inserts persistent `poolctl-ingress-http` and `poolctl-ingress-https` rules ahead of that reject.
+If that curl times out while `poolctl control-plane status` shows Nomad/Traefik active and the job is healthy, verify `api.sankalpjha.dev` still points to `140.245.5.201`, then inspect the Oracle VCN security list or NSG attached to the instance. If the error is immediate `Connection refused` while Traefik is listening on `*:80` or `*:443`, inspect Oracle's host `iptables` INPUT chain; some images reject public traffic before UFW's allow rules run. The generated bootstrap now inserts persistent `poolctl-ingress-http` and `poolctl-ingress-https` rules ahead of that reject.
 
 To include the guard binary in the Oracle bootstrap bundle:
 
@@ -71,7 +71,7 @@ go run ./cmd/poolctl bootstrap-control-plane --dry-run
 4. SSH bootstrap for Oracle control plane.
 5. Deploy first app through Nomad and Traefik.
 6. SSH bootstrap for worker nodes.
-7. Cloudflare DNS sync.
+7. DNS sync for the active DNS provider.
 8. SOPS/age secret injection.
 9. Guard systemd timer.
 10. WireGuard key/IP lifecycle for joined workers.
@@ -112,6 +112,7 @@ The generated bootstrap currently installs:
 - Traefik `3.7.7` from GitHub release archives with checksum verification
 - WireGuard `wg0` at `10.44.0.1/24`
 - Nomad TLS and initial ACL bootstrap token
+- Traefik Let's Encrypt HTTP-challenge certificates stored at `/var/lib/traefik/acme.json`
 - host firewall rules for SSH, HTTP, HTTPS, and WireGuard ingress
 - systemd units for Nomad, Traefik, and the optional `poolctl` guard timer
 

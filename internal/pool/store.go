@@ -280,7 +280,7 @@ nodes:
 apps:
   - name: sample-api
     image: traefik/whoami:v1.11.0
-    domain: sample-api.pool.test
+    domain: api.sankalpjha.dev
     port: 80
     placement:
       prefer_node: oracle-main

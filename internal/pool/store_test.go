@@ -162,8 +162,14 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "render_traefik_config") || !strings.Contains(bootstrap, "/etc/traefik/traefik.yml.template") {
 		t.Fatal("bootstrap should render Traefik config with the verified Nomad token")
 	}
+	if !strings.Contains(bootstrap, "/var/lib/traefik/acme.json") || !strings.Contains(bootstrap, "certificatesResolvers:") {
+		t.Fatal("bootstrap should configure Traefik ACME storage and resolver")
+	}
 	if !strings.Contains(traefikConfig, "token: \"__NOMAD_TOKEN__\"") {
 		t.Fatal("traefik config should use a systemd-safe token placeholder")
+	}
+	if !strings.Contains(traefikConfig, "letsencrypt:") || !strings.Contains(traefikConfig, "httpChallenge:") {
+		t.Fatal("traefik config should include the Let's Encrypt HTTP challenge resolver")
 	}
 	if strings.Contains(traefikService, "EnvironmentFile=") || strings.Contains(traefikService, "ExecStartPre=") {
 		t.Fatal("traefik service should read the rendered config directly")
@@ -190,5 +196,8 @@ func TestRenderAppJob(t *testing.T) {
 	}
 	if !strings.Contains(file.Content, "provider = \"nomad\"") {
 		t.Fatal("expected nomad service provider")
+	}
+	if !strings.Contains(file.Content, "tls.certresolver=letsencrypt") {
+		t.Fatal("expected HTTPS router to use the Let's Encrypt resolver")
 	}
 }

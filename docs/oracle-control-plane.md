@@ -79,7 +79,7 @@ Destination Port Range: 80
 Description: poolctl HTTP ingress
 ```
 
-For HTTPS later, add the same rule for destination port `443`.
+For HTTPS, add the same rule for destination port `443`. The current `api.sankalpjha.dev` route uses Traefik's Let's Encrypt HTTP challenge resolver and stores certificates in `/var/lib/traefik/acme.json`.
 
 Oracle Ubuntu images can also ship with direct `iptables` INPUT rules that accept SSH and then reject everything before UFW's chains run. In that case `ufw status` can show `80/tcp` and `443/tcp` as allowed while public curl still fails with `Connection refused`. The generated bootstrap inserts and persists narrow host rules before that reject:
 
@@ -100,7 +100,8 @@ Quick checks:
 
 ```sh
 ./work/poolctl control-plane status
-curl -H 'Host: sample-api.pool.test' http://140.245.5.201/
+curl http://api.sankalpjha.dev/
+curl https://api.sankalpjha.dev/
 ```
 
 If `control-plane status` shows Nomad/Traefik/WireGuard active and the Nomad job is healthy, but public curl still times out, fix the OCI ingress rule first. If public curl fails immediately with `Connection refused`, inspect the host `iptables` chain next.
