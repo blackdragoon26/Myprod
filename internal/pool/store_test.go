@@ -103,7 +103,7 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, `"$NOMAD_ADDR/v1/status/leader" 2>/dev/null || true`) {
 		t.Fatal("nomad readiness HTTP fallback should tolerate connection-refused during startup")
 	}
-	if !strings.Contains(bootstrap, "run_nomad_acl_bootstrap") || !strings.Contains(bootstrap, `-reset-index="$reset_index"`) {
+	if !strings.Contains(bootstrap, "run_nomad_acl_bootstrap") || !strings.Contains(bootstrap, "/opt/nomad/server/acl-bootstrap-reset") {
 		t.Fatal("bootstrap should recover when Nomad ACL is already bootstrapped but the local token is missing")
 	}
 }
