@@ -311,7 +311,6 @@ fi
 
 $SUDO useradd --system --home /etc/nomad.d --shell /usr/sbin/nologin nomad 2>/dev/null || true
 $SUDO useradd --system --home /etc/traefik --shell /usr/sbin/nologin traefik 2>/dev/null || true
-$SUDO usermod -aG docker nomad
 
 NOMAD_ARCHIVE="nomad_${NOMAD_VERSION}_linux_${ARCH}.zip"
 NOMAD_URL="https://releases.hashicorp.com/nomad/${NOMAD_VERSION}/${NOMAD_ARCHIVE}"
@@ -436,8 +435,6 @@ Wants=network-online.target wg-quick@wg0.service docker.service
 After=network-online.target wg-quick@wg0.service docker.service
 
 [Service]
-User=nomad
-Group=nomad
 ExecReload=/bin/kill -HUP $MAINPID
 ExecStart=/usr/local/bin/nomad agent -config=/etc/nomad.d
 KillMode=process
