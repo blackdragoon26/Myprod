@@ -279,9 +279,9 @@ nodes:
 
 apps:
   - name: sample-api
-    image: ghcr.io/example/sample-api:latest
-    domain: api.example.com
-    port: 3000
+    image: traefik/whoami:v1.11.0
+    domain: sample-api.pool.test
+    port: 80
     placement:
       prefer_node: oracle-main
       allow_workers: true
