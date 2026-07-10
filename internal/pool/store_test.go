@@ -112,6 +112,9 @@ func TestRenderControlPlane(t *testing.T) {
 	if !strings.Contains(bootstrap, "archive_nomad_server_state_for_bootstrap") || !strings.Contains(bootstrap, "server.bootstrap-recovery") {
 		t.Fatal("bootstrap should archive interrupted pre-ready Nomad server state as a last resort")
 	}
+	if !strings.Contains(bootstrap, "read_nomad_token()") || strings.Contains(bootstrap, "return 1\n}\n\nparse_nomad_secret_id") {
+		t.Fatal("optional token reader should not fail when no token exists")
+	}
 	if !strings.Contains(bootstrap, "bootstrap failed near line") {
 		t.Fatal("bootstrap should report failing shell line for remote diagnostics")
 	}

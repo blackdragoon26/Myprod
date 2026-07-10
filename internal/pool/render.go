@@ -269,7 +269,7 @@ read_nomad_token() {
       return 0
     fi
   done
-  return 1
+  return 0
 }
 
 parse_nomad_secret_id() {
