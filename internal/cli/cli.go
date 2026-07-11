@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/blackdragoon26/Myprod/internal/agent"
 	"github.com/blackdragoon26/Myprod/internal/pool"
 	"github.com/blackdragoon26/Myprod/internal/web"
 )
@@ -27,6 +28,7 @@ Usage:
   poolctl app status <app>
   poolctl guard check
   poolctl web
+  poolctl agent
 
 Experimental commands are intentionally local-only in this scaffold.
 `
@@ -58,6 +60,8 @@ func Run(args []string) error {
 		return guard(store, args[1:])
 	case "web":
 		return web.Serve(".poolctl", args[1:])
+	case "agent":
+		return agent.Serve(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage)
 	}

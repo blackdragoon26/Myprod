@@ -17,6 +17,7 @@
       --warn: #f4b740;
       --bad: #f97066;
       --accent: #5aa7ff;
+      --accent-2: #38d9a9;
     }
     * { box-sizing: border-box; }
     body {
@@ -43,8 +44,38 @@
     }
     button:hover { border-color: var(--accent); }
     button:disabled { color: var(--muted); cursor: not-allowed; opacity: .7; }
+    button.primary { background: #17314f; border-color: rgba(90, 167, 255, .5); }
+    button.danger { background: #35191d; border-color: rgba(249, 112, 102, .48); }
+    input {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0f141c;
+      color: var(--text);
+      padding: 6px 10px;
+      font: inherit;
+    }
     .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
     section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+    .hero {
+      grid-column: span 12;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, .8fr);
+      gap: 18px;
+      align-items: stretch;
+      background: linear-gradient(135deg, #111c28 0%, #101722 48%, #11231f 100%);
+    }
+    .hero h2 { font-size: 26px; margin: 0 0 8px; }
+    .hero-copy { max-width: 680px; }
+    .topology {
+      display: grid;
+      gap: 8px;
+      align-content: center;
+      min-height: 150px;
+    }
+    .topology-row { display: grid; grid-template-columns: 1fr 34px 1fr 34px 1fr; gap: 8px; align-items: center; }
+    .topology-box { border: 1px solid var(--line); background: rgba(15, 20, 28, .82); border-radius: 6px; padding: 10px; min-height: 58px; }
+    .arrow { color: var(--accent-2); text-align: center; font-weight: 800; }
     .span-3 { grid-column: span 3; }
     .span-4 { grid-column: span 4; }
     .span-5 { grid-column: span 5; }
@@ -53,6 +84,7 @@
     .span-12 { grid-column: span 12; }
     .muted { color: var(--muted); }
     .metric { font-size: 24px; font-weight: 700; margin-top: 8px; }
+    .submetric { color: var(--muted); font-size: 12px; margin-top: 4px; }
     .pill {
       display: inline-flex;
       align-items: center;
@@ -72,11 +104,20 @@
     tr:last-child td { border-bottom: 0; }
     .actions { display: flex; flex-wrap: wrap; gap: 8px; }
     .callout { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+    .stack { display: grid; gap: 12px; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .status-tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 78px; }
+    .status-tile strong { display: block; margin-top: 4px; font-size: 18px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
     @media (max-width: 860px) {
       main { padding: 16px; }
       header { align-items: flex-start; flex-direction: column; }
       .span-3, .span-4, .span-5, .span-7, .span-8, .span-12 { grid-column: span 12; }
+      .hero { grid-template-columns: 1fr; }
+      .split, .status-grid, .topology-row { grid-template-columns: 1fr; }
+      .arrow { display: none; }
     }
   </style>
 </head>
@@ -85,15 +126,38 @@
     <header>
       <div>
         <h1>Myprod Control</h1>
-        <div class="muted">Vercel-hosted view for the Oracle pool · powered by poolctl</div>
+        <div class="muted">Vercel-hosted view for the Oracle pool &middot; powered by poolctl</div>
       </div>
       <div class="actions">
+        <input id="token" type="password" placeholder="Agent token">
+        <button id="save-token">Unlock</button>
         <button id="refresh">Refresh Health</button>
         <a class="pill" href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">Open API</a>
       </div>
     </header>
 
     <div class="grid">
+      <section class="hero">
+        <div class="hero-copy">
+          <h2>Personal Compute Pool</h2>
+          <div class="muted">One hosted dashboard for the Oracle control plane, Nomad apps, Traefik ingress, and future worker VPS nodes.</div>
+          <div class="actions" style="margin-top: 16px;">
+            <span id="agent-state" class="pill warn">agent locked</span>
+            <span class="pill ok">portfolio domain safe</span>
+            <span class="pill">Netlify DNS subdomain</span>
+          </div>
+        </div>
+        <div class="topology">
+          <div class="topology-row">
+            <div class="topology-box"><strong>Browser</strong><div class="submetric">Vercel dashboard</div></div>
+            <div class="arrow">&rarr;</div>
+            <div class="topology-box"><strong>api.sankalpjha.dev</strong><div class="submetric">Traefik route</div></div>
+            <div class="arrow">&rarr;</div>
+            <div class="topology-box"><strong>poolctl agent</strong><div class="submetric">localhost on Oracle</div></div>
+          </div>
+        </div>
+      </section>
+
       <section class="span-3">
         <div class="muted">Control Plane</div>
         <div class="metric">Oracle ARM</div>
@@ -126,47 +190,66 @@
       </section>
 
       <section class="span-5">
-        <h2>App</h2>
+        <h2>Agent System Status</h2>
+        <div class="status-grid">
+          <div class="status-tile"><span class="muted">Nomad</span><strong id="nomad-state">locked</strong></div>
+          <div class="status-tile"><span class="muted">Traefik</span><strong id="traefik-state">locked</strong></div>
+          <div class="status-tile"><span class="muted">WireGuard</span><strong id="wireguard-state">locked</strong></div>
+        </div>
+      </section>
+
+      <section class="span-7">
+        <h2>Managed Apps</h2>
         <table>
-          <tbody>
-            <tr><th>Name</th><td>sample-api</td></tr>
-            <tr><th>Image</th><td class="mono">traefik/whoami:v1.11.0</td></tr>
-            <tr><th>Domain</th><td><a href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">api.sankalpjha.dev</a></td></tr>
-            <tr><th>Placement</th><td>oracle-main</td></tr>
+          <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Status</th></tr></thead>
+          <tbody id="apps">
+            <tr><td>sample-api</td><td class="mono">traefik/whoami:v1.11.0</td><td><a href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">api.sankalpjha.dev</a></td><td>oracle-main</td><td><span class="pill warn">unlock for live</span></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="span-5">
+        <h2>Managed Nodes</h2>
+        <table>
+          <thead><tr><th>Name</th><th>Provider</th><th>IP</th><th>State</th></tr></thead>
+          <tbody id="nodes">
+            <tr><td>oracle-main</td><td>oracle</td><td>140.245.5.201</td><td><span class="pill warn">unlock for live</span></td></tr>
           </tbody>
         </table>
       </section>
 
       <section class="span-8">
-        <h2>CLI Functionality Map</h2>
+        <h2>CLI Capability Map</h2>
         <table>
           <thead><tr><th>Capability</th><th>Local poolctl web</th><th>Vercel deployment</th></tr></thead>
           <tbody>
             <tr><td>View app/node config</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
             <tr><td>HTTP/HTTPS smoke checks</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
-            <tr><td>Deploy app</td><td><span class="pill ok">working from Mac</span></td><td><span class="pill warn">needs Oracle control API</span></td></tr>
-            <tr><td>Freeze / unfreeze / drain node</td><td><span class="pill ok">working from Mac</span></td><td><span class="pill warn">needs Oracle control API</span></td></tr>
-            <tr><td>Control-plane status over SSH</td><td><span class="pill ok">working from Mac</span></td><td><span class="pill warn">not exposed safely yet</span></td></tr>
+            <tr><td>Deploy app</td><td><span class="pill ok">working from Mac</span></td><td><span id="deploy-capability" class="pill warn">locked until agent token</span></td></tr>
+            <tr><td>Freeze / unfreeze / drain node</td><td><span class="pill ok">working from Mac</span></td><td><span id="node-capability" class="pill warn">locked until agent token</span></td></tr>
+            <tr><td>Control-plane status</td><td><span class="pill ok">working from Mac</span></td><td><span id="status-capability" class="pill warn">locked until agent token</span></td></tr>
           </tbody>
         </table>
       </section>
 
       <section class="span-4">
         <h2>Operator Actions</h2>
-        <div class="callout">
-          <p>Mutating actions are intentionally disabled on Vercel until an authenticated Oracle-local control API exists.</p>
+        <div class="callout stack">
+          <div class="muted">Enter the Oracle agent token to enable live pool operations from Vercel. The token stays in this browser.</div>
           <div class="actions">
-            <button disabled>Deploy sample-api</button>
-            <button disabled>Freeze node</button>
-            <button disabled>Drain node</button>
+            <button class="primary" data-action="control-status" disabled>Control status</button>
+            <button class="primary" data-action="app-deploy" data-name="sample-api" disabled>Deploy sample-api</button>
+            <button data-action="node-freeze" data-name="oracle-main" disabled>Freeze node</button>
+            <button data-action="node-unfreeze" data-name="oracle-main" disabled>Unfreeze node</button>
+            <button class="danger" data-action="node-drain" data-name="oracle-main" disabled>Drain node</button>
           </div>
         </div>
       </section>
 
       <section class="span-12">
-        <h2>Next Backend Step</h2>
+        <h2>Agent Output</h2>
         <div class="callout">
-          Create a tiny Oracle-hosted `poolctl-agent` bound to localhost or WireGuard, protected by a strong token, and let this Vercel dashboard call only that API. That gives you the full GUI without putting SSH keys or Nomad management tokens in Vercel.
+          <pre id="output">Agent is locked. Enter token after the Oracle agent is installed.</pre>
         </div>
       </section>
     </div>
@@ -176,6 +259,16 @@
     const health = document.getElementById("health");
     const overall = document.getElementById("overall");
     const refresh = document.getElementById("refresh");
+    const tokenInput = document.getElementById("token");
+    const saveToken = document.getElementById("save-token");
+    const output = document.getElementById("output");
+    const agentState = document.getElementById("agent-state");
+    const apps = document.getElementById("apps");
+    const nodes = document.getElementById("nodes");
+    const nomadState = document.getElementById("nomad-state");
+    const traefikState = document.getElementById("traefik-state");
+    const wireguardState = document.getElementById("wireguard-state");
+    const AGENT = "https://api.sankalpjha.dev/__poolctl/api";
 
     function pill(status, ok) {
       return `<span class="pill ${ok ? "ok" : "bad"}">${status}</span>`;
@@ -207,8 +300,116 @@
       }
     }
 
+    function agentToken() {
+      return localStorage.getItem("poolctlAgentToken") || "";
+    }
+
+    function setUnlocked(unlocked) {
+      document.querySelectorAll("[data-action]").forEach((button) => {
+        button.disabled = !unlocked;
+      });
+      agentState.textContent = unlocked ? "agent connected" : "agent locked";
+      agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
+      for (const id of ["deploy-capability", "node-capability", "status-capability"]) {
+        const el = document.getElementById(id);
+        el.textContent = unlocked ? "agent enabled" : "locked until agent token";
+        el.className = `pill ${unlocked ? "ok" : "warn"}`;
+      }
+    }
+
+    function statePill(value) {
+      const text = value || "unknown";
+      const ok = ["active", "deployed", "ready"].includes(String(text).toLowerCase());
+      const warn = ["locked", "frozen", "draining", "unknown"].includes(String(text).toLowerCase());
+      return `<span class="pill ${ok ? "ok" : warn ? "warn" : "bad"}">${text}</span>`;
+    }
+
+    function renderAgent(data) {
+      const config = data.Config || data.config || {};
+      const state = data.State || data.state || {};
+      const system = data.System || data.system || {};
+      nomadState.innerHTML = statePill(system.nomad || system.Nomad);
+      traefikState.innerHTML = statePill(system.traefik || system.Traefik);
+      wireguardState.innerHTML = statePill(system.wireguard || system.WireGuard);
+
+      const appState = state.Apps || {};
+      apps.innerHTML = (config.Apps || []).map((app) => {
+        const live = appState[app.Name] || {};
+        const domain = app.Domain ? `<a href="https://${app.Domain}/" target="_blank" rel="noreferrer">${app.Domain}</a>` : "";
+        return `<tr><td>${app.Name}</td><td class="mono">${app.Image}</td><td>${domain}</td><td>${live.Node || app.PreferNode || "auto"}</td><td>${statePill(live.Status || "configured")}</td></tr>`;
+      }).join("") || `<tr><td colspan="5" class="muted">No apps configured.</td></tr>`;
+
+      const nodeState = state.Nodes || {};
+      nodes.innerHTML = (config.Nodes || []).map((node) => {
+        const live = nodeState[node.Name] || {};
+        const stateText = live.Draining ? "draining" : live.Frozen ? "frozen" : "ready";
+        return `<tr><td>${node.Name}</td><td>${node.Provider}</td><td>${node.PublicIP}</td><td>${statePill(stateText)}</td></tr>`;
+      }).join("") || `<tr><td colspan="4" class="muted">No nodes configured.</td></tr>`;
+    }
+
+    async function agentFetch(path, options = {}) {
+      const token = agentToken();
+      if (!token) throw new Error("missing agent token");
+      const res = await fetch(`${AGENT}${path}`, {
+        ...options,
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${token}`,
+          ...(options.headers || {}),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    async function refreshAgent() {
+      if (!agentToken()) {
+        setUnlocked(false);
+        return;
+      }
+      try {
+        const data = await agentFetch("/status");
+        setUnlocked(true);
+        renderAgent(data);
+        output.textContent = JSON.stringify(data, null, 2);
+      } catch (error) {
+        setUnlocked(false);
+        nomadState.textContent = "locked";
+        traefikState.textContent = "locked";
+        wireguardState.textContent = "locked";
+        output.textContent = `Agent auth/status failed: ${error.message}`;
+      }
+    }
+
+    async function runAction(button) {
+      button.disabled = true;
+      output.textContent = `Running ${button.dataset.action}...`;
+      try {
+        const data = await agentFetch("/action", {
+          method: "POST",
+          body: JSON.stringify({ action: button.dataset.action, name: button.dataset.name || "" }),
+        });
+        output.textContent = data.output || JSON.stringify(data, null, 2);
+        await refreshAgent();
+      } catch (error) {
+        output.textContent = `Action failed: ${error.message}`;
+      } finally {
+        button.disabled = !agentToken();
+      }
+    }
+
+    saveToken.addEventListener("click", async () => {
+      localStorage.setItem("poolctlAgentToken", tokenInput.value.trim());
+      tokenInput.value = "";
+      await refreshAgent();
+    });
+    document.querySelectorAll("[data-action]").forEach((button) => {
+      button.addEventListener("click", () => runAction(button));
+    });
     refresh.addEventListener("click", loadHealth);
     loadHealth();
+    refreshAgent();
   </script>
 </body>
 </html>

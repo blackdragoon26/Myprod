@@ -1,4 +1,6 @@
 .poolctl/
+.cache/
+.DS_Store
 work/
 outputs/
 /poolctl
