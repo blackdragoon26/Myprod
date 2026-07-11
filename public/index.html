@@ -236,6 +236,7 @@
         <h2>Operator Actions</h2>
         <div class="callout stack">
           <div class="muted">Enter the Oracle agent token to enable live pool operations from Vercel. The token stays in this browser.</div>
+          <div class="muted">Deploy sample-api redeploys the existing whoami service, so the page at api.sankalpjha.dev should stay the same when it succeeds.</div>
           <div class="actions">
             <button class="primary" data-action="control-status" disabled>Control status</button>
             <button class="primary" data-action="app-deploy" data-name="sample-api" disabled>Deploy sample-api</button>
@@ -324,6 +325,27 @@
       return `<span class="pill ${ok ? "ok" : warn ? "warn" : "bad"}">${text}</span>`;
     }
 
+    function actionLabel(action) {
+      return {
+        "control-status": "Control status",
+        "app-deploy": "Deploy sample-api",
+        "node-freeze": "Freeze node",
+        "node-unfreeze": "Unfreeze node",
+        "node-drain": "Drain node",
+      }[action] || action;
+    }
+
+    function actionMessage(action, data) {
+      const raw = (data.output || "").trim();
+      if (action === "app-deploy") {
+        return `Deploy sample-api completed.\n\nNomad accepted the job. Since sample-api was already deployed, api.sankalpjha.dev is expected to look unchanged.\n\n${raw || "No command output returned."}`;
+      }
+      if (action === "control-status") {
+        return `Control-plane services:\n${raw || "No command output returned."}`;
+      }
+      return `${actionLabel(action)} completed.\n\n${raw || "State updated."}`;
+    }
+
     function renderAgent(data) {
       const config = data.Config || data.config || {};
       const state = data.State || data.state || {};
@@ -363,7 +385,7 @@
       return data;
     }
 
-    async function refreshAgent() {
+    async function refreshAgent(options = {}) {
       if (!agentToken()) {
         setUnlocked(false);
         return;
@@ -372,26 +394,31 @@
         const data = await agentFetch("/status");
         setUnlocked(true);
         renderAgent(data);
-        output.textContent = JSON.stringify(data, null, 2);
+        if (!options.silent) {
+          output.textContent = JSON.stringify(data, null, 2);
+        }
       } catch (error) {
         setUnlocked(false);
         nomadState.textContent = "locked";
         traefikState.textContent = "locked";
         wireguardState.textContent = "locked";
-        output.textContent = `Agent auth/status failed: ${error.message}`;
+        if (!options.silent) {
+          output.textContent = `Agent auth/status failed: ${error.message}`;
+        }
       }
     }
 
     async function runAction(button) {
       button.disabled = true;
-      output.textContent = `Running ${button.dataset.action}...`;
+      const action = button.dataset.action;
+      output.textContent = `Running ${actionLabel(action)}...`;
       try {
         const data = await agentFetch("/action", {
           method: "POST",
-          body: JSON.stringify({ action: button.dataset.action, name: button.dataset.name || "" }),
+          body: JSON.stringify({ action, name: button.dataset.name || "" }),
         });
-        output.textContent = data.output || JSON.stringify(data, null, 2);
-        await refreshAgent();
+        output.textContent = actionMessage(action, data);
+        await refreshAgent({ silent: true });
       } catch (error) {
         output.textContent = `Action failed: ${error.message}`;
       } finally {
