@@ -89,13 +89,15 @@ POOLCTL_WEB_PASSWORD='change-me' ./work/poolctl web --addr 0.0.0.0:8088
 
 Do not expose the dashboard on `admin.sankalpjha.dev` until the backend is running in a deployment-safe mode. The current dashboard controls Oracle through the existing SSH-based CLI flow, which is perfect from this repo on your Mac; the hosted version should use Oracle-local Nomad/systemd operations instead of copying a private SSH key to the server.
 
-There is also a Vercel-hosted read-only control view at:
+There is also a Vercel-hosted control dashboard at:
 
 ```txt
 https://myprod-control.vercel.app/
 ```
 
-It shows the Oracle pool shape and runs live HTTP/HTTPS smoke checks through `/api/smoke`. Mutating controls are intentionally disabled there until an Oracle-local `poolctl-agent` exists.
+It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/smoke`, and can call the Oracle-local `poolctl agent` through `https://api.sankalpjha.dev/__poolctl` after unlocking with the agent token. The dashboard includes links to the repo, docs, and creator site.
+
+Deployment notes live in [docs/deployment.md](docs/deployment.md). Production should be Git-driven from `main` through Vercel Git Integration or the included GitHub Actions workflow.
 
 ## Roadmap
 

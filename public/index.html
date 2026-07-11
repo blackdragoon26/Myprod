@@ -109,6 +109,7 @@
     .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .status-tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 78px; }
     .status-tile strong { display: block; margin-top: 4px; font-size: 18px; }
+    .link-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
     pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
     @media (max-width: 860px) {
@@ -145,6 +146,11 @@
             <span id="agent-state" class="pill warn">agent locked</span>
             <span class="pill ok">portfolio domain safe</span>
             <span class="pill">Netlify DNS subdomain</span>
+          </div>
+          <div class="link-list">
+            <a class="pill" href="https://github.com/blackdragoon26/Myprod" target="_blank" rel="noreferrer">GitHub repo</a>
+            <a class="pill" href="https://github.com/blackdragoon26/Myprod/tree/main/docs" target="_blank" rel="noreferrer">Docs</a>
+            <a class="pill" href="https://sankalpjha.dev/" target="_blank" rel="noreferrer">Creator</a>
           </div>
         </div>
         <div class="topology">
@@ -230,6 +236,16 @@
             <tr><td>Control-plane status</td><td><span class="pill ok">working from Mac</span></td><td><span id="status-capability" class="pill warn">locked until agent token</span></td></tr>
           </tbody>
         </table>
+      </section>
+
+      <section class="span-4">
+        <h2>Project Links</h2>
+        <div class="callout stack">
+          <a href="https://github.com/blackdragoon26/Myprod" target="_blank" rel="noreferrer">Repository: blackdragoon26/Myprod</a>
+          <a href="https://github.com/blackdragoon26/Myprod/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
+          <a href="https://github.com/blackdragoon26/Myprod/blob/main/docs/deployment.md" target="_blank" rel="noreferrer">Deployment docs</a>
+          <a href="https://sankalpjha.dev/" target="_blank" rel="noreferrer">Creator: Sankalp Jha</a>
+        </div>
       </section>
 
       <section class="span-4">
