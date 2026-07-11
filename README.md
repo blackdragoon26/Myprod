@@ -46,6 +46,7 @@ go run ./cmd/poolctl app status sample-api
 go run ./cmd/poolctl app render sample-api
 go run ./cmd/poolctl app deploy sample-api
 go run ./cmd/poolctl guard check
+go run ./cmd/poolctl web
 ```
 
 The default `sample-api` uses `traefik/whoami` so the first deployment can prove the control plane works before you bring a real backend image. After deploying it, smoke-test centralized ingress with:
@@ -62,6 +63,31 @@ To include the guard binary in the Oracle bootstrap bundle:
 go build -o work/poolctl ./cmd/poolctl
 go run ./cmd/poolctl bootstrap-control-plane --dry-run
 ```
+
+## Web Dashboard
+
+`poolctl web` starts a small operator dashboard powered by the same CLI command surface:
+
+```sh
+go build -o work/poolctl ./cmd/poolctl
+./work/poolctl web --addr 127.0.0.1:8088
+```
+
+The dashboard reads `.poolctl/config.yaml` and `.poolctl/state.yaml`, runs HTTP/HTTPS smoke checks for configured apps, and exposes buttons for:
+
+- control-plane status
+- app render/deploy
+- node freeze/unfreeze/drain
+- guard check
+- bundle render
+
+For local use, auth is disabled when bound to loopback. If binding to a public interface, set an admin password first:
+
+```sh
+POOLCTL_WEB_PASSWORD='change-me' ./work/poolctl web --addr 0.0.0.0:8088
+```
+
+Do not expose the dashboard on `admin.sankalpjha.dev` until the backend is running in a deployment-safe mode. The current dashboard controls Oracle through the existing SSH-based CLI flow, which is perfect from this repo on your Mac; the hosted version should use Oracle-local Nomad/systemd operations instead of copying a private SSH key to the server.
 
 ## Roadmap
 

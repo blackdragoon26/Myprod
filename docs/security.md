@@ -25,6 +25,10 @@ This project assumes all VPS machines are public internet hosts, so scheduler an
 
 V1 assumes the operator already has SSH access to each VPS. `poolctl` should accept an explicit `--ssh-key` path later. It should not automatically reuse GitHub deploy keys.
 
+## Web Dashboard
+
+`poolctl web` is an operator surface with deploy, freeze, drain, render, guard, and status actions. It disables auth only for loopback development and requires `POOLCTL_WEB_PASSWORD` when bound to a non-loopback address. Do not expose it publicly until the hosted backend uses Oracle-local Nomad/systemd operations; copying the operator's private SSH key onto Oracle just to make the dashboard work is not an acceptable deployment model.
+
 ## Guard Behavior
 
 The guard protects against resource-risk, not exact cloud billing in v1. It can freeze new placements when local thresholds are crossed, but it does not stop running apps automatically.

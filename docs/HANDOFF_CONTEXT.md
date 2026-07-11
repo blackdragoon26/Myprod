@@ -15,6 +15,8 @@ Latest update, 2026-07-11 IST:
 - `sample-api` is deployed with Traefik host rule `Host(api.sankalpjha.dev)`.
 - Traefik is configured with a Let's Encrypt HTTP-challenge resolver named `letsencrypt`.
 - `https://api.sankalpjha.dev/` returns `200 OK` with a valid Let's Encrypt certificate for `api.sankalpjha.dev`.
+- `poolctl web` now starts a local authenticated-capable dashboard powered by the existing CLI commands. It is verified locally on loopback with live HTTP/HTTPS smoke checks and a harmless `guard check` action.
+- Do not expose `admin.sankalpjha.dev` yet. The current dashboard controls Oracle through the SSH-based CLI flow from this repo; the hosted version should use Oracle-local Nomad/systemd operations instead of copying the Mac's private SSH key onto Oracle.
 - Root cause was Oracle's host `iptables` INPUT chain: it accepted SSH and then rejected traffic before UFW's allow chains ran.
 - Added persistent host rules before the reject:
   - `poolctl-ingress-http` for TCP `80`
@@ -174,6 +176,7 @@ poolctl app render <app>
 poolctl app deploy <app>
 poolctl app status <app>
 poolctl guard check
+poolctl web
 ```
 
 Important implemented behavior:
@@ -648,7 +651,9 @@ The user is frustrated. Be direct and reassuring:
 ## Next Engineering Tasks
 
 1. Add authenticated GUI dashboard:
-   - deploy at `admin.sankalpjha.dev`
+   - local `poolctl web` exists and works
+   - refactor hosted execution to use Oracle-local Nomad/systemd operations
+   - then deploy at `admin.sankalpjha.dev`
    - require auth before exposing control actions
 2. Add worker join flow:
    - generate WireGuard keys

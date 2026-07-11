@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/blackdragoon26/Myprod/internal/pool"
+	"github.com/blackdragoon26/Myprod/internal/web"
 )
 
 const usage = `poolctl is a tiny personal compute-pool CLI.
@@ -25,6 +26,7 @@ Usage:
   poolctl app deploy <app>
   poolctl app status <app>
   poolctl guard check
+  poolctl web
 
 Experimental commands are intentionally local-only in this scaffold.
 `
@@ -54,6 +56,8 @@ func Run(args []string) error {
 		return app(store, args[1:])
 	case "guard":
 		return guard(store, args[1:])
+	case "web":
+		return web.Serve(".poolctl", args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], usage)
 	}
