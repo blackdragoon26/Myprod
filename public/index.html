@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Myprod Control</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f14;
+      --panel: #121821;
+      --panel-2: #0f141c;
+      --line: #263241;
+      --text: #e9eef5;
+      --muted: #93a1b2;
+      --ok: #31c48d;
+      --warn: #f4b740;
+      --bad: #f97066;
+      --accent: #5aa7ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 28px; }
+    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+    h1 { margin: 0; font-size: 28px; line-height: 1.1; }
+    h2 { margin: 0 0 14px; font-size: 17px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #1b2430;
+      color: var(--text);
+      padding: 6px 10px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button:hover { border-color: var(--accent); }
+    button:disabled { color: var(--muted); cursor: not-allowed; opacity: .7; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+    .muted { color: var(--muted); }
+    .metric { font-size: 24px; font-weight: 700; margin-top: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .pill.ok { color: var(--ok); border-color: rgba(49, 196, 141, .42); }
+    .pill.warn { color: var(--warn); border-color: rgba(244, 183, 64, .42); }
+    .pill.bad { color: var(--bad); border-color: rgba(249, 112, 102, .42); }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .02em; }
+    tr:last-child td { border-bottom: 0; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .callout { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width: 860px) {
+      main { padding: 16px; }
+      header { align-items: flex-start; flex-direction: column; }
+      .span-3, .span-4, .span-5, .span-7, .span-8, .span-12 { grid-column: span 12; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Myprod Control</h1>
+        <div class="muted">Vercel-hosted view for the Oracle pool · powered by poolctl</div>
+      </div>
+      <div class="actions">
+        <button id="refresh">Refresh Health</button>
+        <a class="pill" href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">Open API</a>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="span-3">
+        <div class="muted">Control Plane</div>
+        <div class="metric">Oracle ARM</div>
+        <div class="muted">140.245.5.201</div>
+      </section>
+      <section class="span-3">
+        <div class="muted">Ingress</div>
+        <div class="metric">Traefik</div>
+        <div class="muted">HTTP + HTTPS</div>
+      </section>
+      <section class="span-3">
+        <div class="muted">Scheduler</div>
+        <div class="metric">Nomad</div>
+        <div class="muted">single control node</div>
+      </section>
+      <section class="span-3">
+        <div class="muted">Public API</div>
+        <div id="overall" class="metric">checking</div>
+        <div class="muted">api.sankalpjha.dev</div>
+      </section>
+
+      <section class="span-7">
+        <h2>Live Endpoint Health</h2>
+        <table>
+          <thead><tr><th>Route</th><th>Status</th><th>Latency</th><th>Certificate</th></tr></thead>
+          <tbody id="health">
+            <tr><td colspan="4" class="muted">Checking Oracle ingress...</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="span-5">
+        <h2>App</h2>
+        <table>
+          <tbody>
+            <tr><th>Name</th><td>sample-api</td></tr>
+            <tr><th>Image</th><td class="mono">traefik/whoami:v1.11.0</td></tr>
+            <tr><th>Domain</th><td><a href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">api.sankalpjha.dev</a></td></tr>
+            <tr><th>Placement</th><td>oracle-main</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="span-8">
+        <h2>CLI Functionality Map</h2>
+        <table>
+          <thead><tr><th>Capability</th><th>Local poolctl web</th><th>Vercel deployment</th></tr></thead>
+          <tbody>
+            <tr><td>View app/node config</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
+            <tr><td>HTTP/HTTPS smoke checks</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
+            <tr><td>Deploy app</td><td><span class="pill ok">working from Mac</span></td><td><span class="pill warn">needs Oracle control API</span></td></tr>
+            <tr><td>Freeze / unfreeze / drain node</td><td><span class="pill ok">working from Mac</span></td><td><span class="pill warn">needs Oracle control API</span></td></tr>
+            <tr><td>Control-plane status over SSH</td><td><span class="pill ok">working from Mac</span></td><td><span class="pill warn">not exposed safely yet</span></td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="span-4">
+        <h2>Operator Actions</h2>
+        <div class="callout">
+          <p>Mutating actions are intentionally disabled on Vercel until an authenticated Oracle-local control API exists.</p>
+          <div class="actions">
+            <button disabled>Deploy sample-api</button>
+            <button disabled>Freeze node</button>
+            <button disabled>Drain node</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="span-12">
+        <h2>Next Backend Step</h2>
+        <div class="callout">
+          Create a tiny Oracle-hosted `poolctl-agent` bound to localhost or WireGuard, protected by a strong token, and let this Vercel dashboard call only that API. That gives you the full GUI without putting SSH keys or Nomad management tokens in Vercel.
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    const health = document.getElementById("health");
+    const overall = document.getElementById("overall");
+    const refresh = document.getElementById("refresh");
+
+    function pill(status, ok) {
+      return `<span class="pill ${ok ? "ok" : "bad"}">${status}</span>`;
+    }
+
+    async function loadHealth() {
+      refresh.disabled = true;
+      health.innerHTML = `<tr><td colspan="4" class="muted">Checking Oracle ingress...</td></tr>`;
+      overall.textContent = "checking";
+      try {
+        const res = await fetch("/api/smoke", { cache: "no-store" });
+        const data = await res.json();
+        overall.textContent = data.ok ? "healthy" : "degraded";
+        overall.style.color = data.ok ? "var(--ok)" : "var(--bad)";
+        health.innerHTML = data.checks.map((check) => `
+          <tr>
+            <td><a href="${check.url}" target="_blank" rel="noreferrer">${check.label}</a></td>
+            <td>${pill(check.status, check.ok)}</td>
+            <td>${check.latencyMs} ms</td>
+            <td>${check.tls || "n/a"}</td>
+          </tr>
+        `).join("");
+      } catch (error) {
+        overall.textContent = "error";
+        overall.style.color = "var(--bad)";
+        health.innerHTML = `<tr><td colspan="4">${pill(error.message, false)}</td></tr>`;
+      } finally {
+        refresh.disabled = false;
+      }
+    }
+
+    refresh.addEventListener("click", loadHealth);
+    loadHealth();
+  </script>
+</body>
+</html>

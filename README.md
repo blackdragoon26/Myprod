@@ -89,6 +89,14 @@ POOLCTL_WEB_PASSWORD='change-me' ./work/poolctl web --addr 0.0.0.0:8088
 
 Do not expose the dashboard on `admin.sankalpjha.dev` until the backend is running in a deployment-safe mode. The current dashboard controls Oracle through the existing SSH-based CLI flow, which is perfect from this repo on your Mac; the hosted version should use Oracle-local Nomad/systemd operations instead of copying a private SSH key to the server.
 
+There is also a Vercel-hosted read-only control view at:
+
+```txt
+https://myprod-control.vercel.app/
+```
+
+It shows the Oracle pool shape and runs live HTTP/HTTPS smoke checks through `/api/smoke`. Mutating controls are intentionally disabled there until an Oracle-local `poolctl-agent` exists.
+
 ## Roadmap
 
 1. Local config/state and CLI behavior.
