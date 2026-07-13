@@ -14,6 +14,18 @@ GitHub repo:
 https://github.com/blackdragoon26/Myprod
 ```
 
+Agent provisioning documentation:
+
+```txt
+https://github.com/blackdragoon26/Myprod/blob/main/docs/agent-runbook.md
+```
+
+Project owner:
+
+```txt
+https://sankalpjha.dev/
+```
+
 ## Vercel CI/CD
 
 The desired production flow is:

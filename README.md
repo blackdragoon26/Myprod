@@ -10,6 +10,13 @@ DNS -> Oracle Traefik ingress -> Nomad apps on Oracle/workers over WireGuard
 
 The first target is personal projects, not enterprise high availability.
 
+## Project Links
+
+- Dashboard: <https://myprod-control.vercel.app/>
+- Repository: <https://github.com/blackdragoon26/Myprod>
+- Agent provisioning runbook: [docs/agent-runbook.md](docs/agent-runbook.md)
+- Creator: [Sankalp Jha](https://sankalpjha.dev/)
+
 ## Goals
 
 - Bring any manually-created VPS into the pool after SSH access exists.
@@ -100,7 +107,12 @@ It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/
 
 Deployment notes live in [docs/deployment.md](docs/deployment.md). Production should be Git-driven from `main` through Vercel Git Integration.
 
-To add the first DigitalOcean credit-backed worker, follow [docs/digitalocean-worker.md](docs/digitalocean-worker.md). The web dashboard can register the SSH-ready VPS and run the worker join flow for Nomad/WireGuard.
+Before any agent adds another worker, follow
+[docs/agent-runbook.md](docs/agent-runbook.md). The provider-specific selection
+notes are in [docs/digitalocean-worker.md](docs/digitalocean-worker.md). The
+local web dashboard can register an SSH-ready VPS and run the worker join flow
+for Nomad/WireGuard; the hosted dashboard controls nodes after they are joined
+and synchronized to the Oracle agent store.
 
 ## Roadmap
 

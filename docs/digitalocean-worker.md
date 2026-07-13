@@ -4,18 +4,25 @@ This guide creates one cost-efficient DigitalOcean Droplet and registers it in t
 
 ## Recommended Droplet
 
-Use one Basic Premium AMD Droplet first:
+Use one Basic Regular Droplet first when Premium AMD is unavailable in the
+required region:
 
 ```txt
 Plan: Basic
-CPU option: Premium AMD
+CPU option: Regular (shared CPU)
 Size: 8 GiB RAM / 4 vCPU / 160 GiB SSD / 5 TiB transfer
 Estimated cost: about $48/month
 Image: Ubuntu 24.04 LTS x64
 Role in poolctl: worker
 ```
 
-This is the practical starting point for a $200 credit because it leaves roughly four months of runtime for one worker. A CPU-optimized 4 vCPU Droplet gives more predictable CPU, but costs materially more and burns the credit faster. Resize later if the worker is CPU-bound.
+This is the current practical baseline for general backend workloads. Provider
+prices, regional inventory, account limits, taxes, and credit eligibility can
+change, so verify the live summary before creation. A `$200` credit does not
+guarantee a fixed number of months: usage is billed while the Droplet and
+eligible add-ons exist, and the credit may expire before it is exhausted. Use a
+dedicated or CPU-optimized plan only after metrics show sustained CPU
+contention.
 
 ## Create The Droplet
 
@@ -25,7 +32,8 @@ This is the practical starting point for a $200 credit because it leaves roughly
    - Use **Bangalore** for India-focused traffic or operator latency.
    - Use a US region if most users and upstream services are in the US.
 4. Select **Ubuntu 24.04 LTS x64**.
-5. Select **Basic**, then **Premium AMD**, then **8 GiB / 4 vCPU**.
+5. Select **Basic**, then **Regular**, then **8 GiB / 4 vCPU**. If Premium AMD
+   is available at a comparable price, it is also suitable.
 6. Choose **SSH Key** authentication and attach your local public key.
 7. Enable **Monitoring**.
 8. Leave **Backups** off for the first worker. Backups add monthly cost.
@@ -81,6 +89,22 @@ Verify:
 ssh ubuntu@DROPLET_PUBLIC_IP
 ```
 
+The dashboard's Join operation is non-interactive, so configure passwordless
+sudo narrowly for this SSH-restricted operator account:
+
+```sh
+printf 'ubuntu ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/90-poolctl
+chmod 0440 /etc/sudoers.d/90-poolctl
+visudo -cf /etc/sudoers.d/90-poolctl
+```
+
+Verify from the operator machine before registering the node:
+
+```sh
+ssh -o BatchMode=yes -i /absolute/path/to/worker.key ubuntu@DROPLET_PUBLIC_IP \
+  'sudo -n true && echo sudo-ready'
+```
+
 ## Register In poolctl Web
 
 Start the local dashboard from the repo:
@@ -103,7 +127,7 @@ Name: do-worker-1
 Provider: digitalocean
 Public IP: DROPLET_PUBLIC_IP
 SSH User: ubuntu
-SSH Key: ~/.ssh/keys/digitalocean-worker.key
+SSH Key: /absolute/path/to/digitalocean-worker.key
 Overlay IP: keep the suggested 10.44.0.x value unless it conflicts
 ```
 

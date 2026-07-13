@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Hosted control surface for the Myprod personal compute pool.">
+  <meta name="author" content="Sankalp Jha">
+  <link rel="canonical" href="https://myprod-control.vercel.app/">
   <title>Myprod Control</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     /* ---------- Design tokens ---------- */
     :root,
@@ -356,6 +356,18 @@
     .bar.hot { background: var(--accent); }
 
     .empty { padding: 18px; color: var(--text-muted); text-align: center; font-size: 13px; }
+    .site-footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 10px 18px;
+      padding: 4px 2px 0;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .footer-links { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+    .site-footer a { font-weight: 600; color: var(--text); }
+    .site-footer a:hover { color: var(--accent); }
 
     /* ---------- Responsive ---------- */
     @media (max-width: 980px) {
@@ -537,6 +549,14 @@
             <pre id="output">Agent is locked. Enter the Oracle agent token to enable hosted operations.</pre>
           </section>
         </div>
+        <footer class="site-footer">
+          <span>Myprod personal compute pool</span>
+          <nav class="footer-links" aria-label="Project resources">
+            <a href="https://github.com/blackdragoon26/Myprod" target="_blank" rel="noopener noreferrer">Repository</a>
+            <a href="https://github.com/blackdragoon26/Myprod/blob/main/docs/agent-runbook.md" target="_blank" rel="noopener noreferrer">Agent runbook</a>
+            <a href="https://sankalpjha.dev/" target="_blank" rel="noopener noreferrer">Created by Sankalp Jha</a>
+          </nav>
+        </footer>
       </div>
     </div>
   </main>
