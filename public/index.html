@@ -141,7 +141,7 @@
       <section class="hero">
         <div class="hero-copy">
           <h2>Personal Compute Pool</h2>
-          <div class="muted">One hosted dashboard for the Oracle control plane, Nomad apps, Traefik ingress, and future worker VPS nodes.</div>
+          <div class="muted">One hosted dashboard for the Oracle control plane, DigitalOcean worker nodes, Nomad apps, and Traefik ingress.</div>
           <div class="actions" style="margin-top: 16px;">
             <span id="agent-state" class="pill warn">agent locked</span>
             <span class="pill ok">portfolio domain safe</span>
@@ -231,9 +231,9 @@
           <tbody>
             <tr><td>View app/node config</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
             <tr><td>HTTP/HTTPS smoke checks</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
-            <tr><td>Deploy app</td><td><span class="pill ok">working from Mac</span></td><td><span id="deploy-capability" class="pill warn">locked until agent token</span></td></tr>
-            <tr><td>Freeze / unfreeze / drain node</td><td><span class="pill ok">working from Mac</span></td><td><span id="node-capability" class="pill warn">locked until agent token</span></td></tr>
-            <tr><td>Control-plane status</td><td><span class="pill ok">working from Mac</span></td><td><span id="status-capability" class="pill warn">locked until agent token</span></td></tr>
+            <tr><td>Deploy app</td><td><span class="pill ok">available through poolctl</span></td><td><span id="deploy-capability" class="pill warn">locked until agent token</span></td></tr>
+            <tr><td>Freeze / unfreeze / drain node</td><td><span class="pill ok">available through poolctl</span></td><td><span id="node-capability" class="pill warn">locked until agent token</span></td></tr>
+            <tr><td>Control-plane status</td><td><span class="pill ok">available through poolctl</span></td><td><span id="status-capability" class="pill warn">locked until agent token</span></td></tr>
           </tbody>
         </table>
       </section>
@@ -253,12 +253,12 @@
         <div class="callout stack">
           <div class="muted">Enter the Oracle agent token to enable live pool operations from Vercel. The token stays in this browser.</div>
           <div class="muted">Deploy sample-api redeploys the existing whoami service, so the page at api.sankalpjha.dev should stay the same when it succeeds.</div>
-          <div class="actions">
+          <div class="actions" id="global-actions">
             <button class="primary" data-action="control-status" disabled>Control status</button>
             <button class="primary" data-action="app-deploy" data-name="sample-api" disabled>Deploy sample-api</button>
-            <button data-action="node-freeze" data-name="oracle-main" disabled>Freeze node</button>
-            <button data-action="node-unfreeze" data-name="oracle-main" disabled>Unfreeze node</button>
-            <button class="danger" data-action="node-drain" data-name="oracle-main" disabled>Drain node</button>
+          </div>
+          <div class="stack" id="node-actions">
+            <div class="muted">Unlock to load node actions.</div>
           </div>
         </div>
       </section>
@@ -282,6 +282,7 @@
     const agentState = document.getElementById("agent-state");
     const apps = document.getElementById("apps");
     const nodes = document.getElementById("nodes");
+    const nodeActions = document.getElementById("node-actions");
     const nomadState = document.getElementById("nomad-state");
     const traefikState = document.getElementById("traefik-state");
     const wireguardState = document.getElementById("wireguard-state");
@@ -336,18 +337,19 @@
 
     function statePill(value) {
       const text = value || "unknown";
-      const ok = ["active", "deployed", "ready"].includes(String(text).toLowerCase());
+      const ok = ["active", "deployed", "ready", "joined"].includes(String(text).toLowerCase());
       const warn = ["locked", "frozen", "draining", "unknown"].includes(String(text).toLowerCase());
       return `<span class="pill ${ok ? "ok" : warn ? "warn" : "bad"}">${text}</span>`;
     }
 
     function actionLabel(action) {
+      if (action.startsWith("node-")) {
+        const verb = action.replace("node-", "").replace("-", " ");
+        return `${verb[0].toUpperCase()}${verb.slice(1)} ${name || "node"}`;
+      }
       return {
         "control-status": "Control status",
         "app-deploy": "Deploy sample-api",
-        "node-freeze": "Freeze node",
-        "node-unfreeze": "Unfreeze node",
-        "node-drain": "Drain node",
       }[action] || action;
     }
 
@@ -378,11 +380,25 @@
       }).join("") || `<tr><td colspan="5" class="muted">No apps configured.</td></tr>`;
 
       const nodeState = state.Nodes || {};
-      nodes.innerHTML = (config.Nodes || []).map((node) => {
+      const configuredNodes = config.Nodes || [];
+      nodes.innerHTML = configuredNodes.map((node) => {
         const live = nodeState[node.Name] || {};
-        const stateText = live.Draining ? "draining" : live.Frozen ? "frozen" : "ready";
+        const stateText = live.Draining ? "draining" : live.Frozen ? "frozen" : live.Joined ? "joined" : "ready";
         return `<tr><td>${node.Name}</td><td>${node.Provider}</td><td>${node.PublicIP}</td><td>${statePill(stateText)}</td></tr>`;
       }).join("") || `<tr><td colspan="4" class="muted">No nodes configured.</td></tr>`;
+
+      nodeActions.innerHTML = configuredNodes.map((node) => `
+        <div class="callout">
+          <strong>${node.Name}</strong>
+          <div class="muted">${node.Provider || "provider"} · ${node.PublicIP || "no public IP"} · ${node.OverlayIP || "no overlay IP"}</div>
+          <div class="actions" style="margin-top: 10px;">
+            <button data-action="node-freeze" data-name="${node.Name}">Freeze</button>
+            <button data-action="node-unfreeze" data-name="${node.Name}">Unfreeze</button>
+            <button class="danger" data-action="node-drain" data-name="${node.Name}">Drain</button>
+          </div>
+        </div>
+      `).join("") || `<div class="muted">No nodes configured.</div>`;
+      bindActionButtons();
     }
 
     async function agentFetch(path, options = {}) {
@@ -427,7 +443,7 @@
     async function runAction(button) {
       button.disabled = true;
       const action = button.dataset.action;
-      output.textContent = `Running ${actionLabel(action)}...`;
+      output.textContent = `Running ${actionLabel(action, button.dataset.name || "")}...`;
       try {
         const data = await agentFetch("/action", {
           method: "POST",
@@ -447,9 +463,16 @@
       tokenInput.value = "";
       await refreshAgent();
     });
-    document.querySelectorAll("[data-action]").forEach((button) => {
-      button.addEventListener("click", () => runAction(button));
-    });
+    function bindActionButtons() {
+      const unlocked = Boolean(agentToken());
+      document.querySelectorAll("[data-action]").forEach((button) => {
+        button.disabled = !unlocked;
+        if (button.dataset.bound === "true") return;
+        button.dataset.bound = "true";
+        button.addEventListener("click", () => runAction(button));
+      });
+    }
+    bindActionButtons();
     refresh.addEventListener("click", loadHealth);
     loadHealth();
     refreshAgent();
