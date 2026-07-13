@@ -213,6 +213,61 @@ ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
 Unlock the production dashboard, refresh it, and confirm the new node appears.
 Do not copy the agent token or private SSH keys into the repository.
 
+## 8. Reserve A Worker For A Project
+
+Use a reservation when one project needs the entire machine, especially for host-level package installation, network namespaces, kernel modules, or other privileged work.
+
+Preflight requirements:
+
+- the target must be a worker, never the control plane;
+- the worker must be joined and visible in Nomad;
+- the worker must have no active allocations;
+- the project ID may contain only letters, numbers, dash, and underscore.
+
+From the hosted dashboard:
+
+1. Unlock with the Oracle agent token.
+2. Refresh and inspect the worker's current state.
+3. Select **Reserve** and enter the project ID.
+4. Read the confirmation: reservation disables real Nomad scheduling for the whole worker.
+5. Confirm and wait for the action output.
+6. Refresh and verify both `reserved` and `project: <id>` appear.
+
+The reservation is now the infrastructure boundary. Continue the project work by SSHing directly to the reserved worker and installing inside that machine. Myprod will not schedule shared Nomad workloads there while the reservation remains active:
+
+```sh
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@188.166.182.174
+```
+
+Do not run project installation commands on `oracle-main`; it remains the shared control plane and ingress host.
+
+Verify independently on Oracle:
+
+```sh
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
+  'token="$(sudo awk "NF {print; exit}" /var/lib/poolctl/nomad-acl/bootstrap.token)"; \
+   sudo env NOMAD_ADDR=https://10.44.0.1:4646 \
+     NOMAD_CACERT=/etc/nomad.d/tls/nomad-agent-ca.pem \
+     NOMAD_TOKEN="$token" nomad node status'
+```
+
+The reserved node must show `ineligible`. Oracle's `/opt/poolctl/.poolctl/state.yaml` must contain the matching `reserved_for` value.
+
+**Release** clears project ownership but intentionally keeps the node ineligible. Inspect and clean the worker first, then use the separately confirmed **Unfreeze** action to return it to the shared scheduler.
+
+## 9. Action Semantics
+
+- **Control status** reads real systemd service state.
+- **Deploy** runs a real Nomad job submission and status verification.
+- **Freeze** changes real Nomad scheduling eligibility to ineligible.
+- **Unfreeze** changes eligibility to eligible and is refused for reserved or draining nodes.
+- **Drain** starts a real detached Nomad drain.
+- **Cancel drain** stops the drain but keeps the node ineligible.
+- **Reserve** requires an empty worker and records exclusive project ownership.
+- **Release** clears ownership but does not silently make the node schedulable.
+
+Do not infer success from the dashboard label alone. Read command output and verify Nomad after powerful operations.
+
 ## Efficiency Rules
 
 - Keep centralized ingress on Oracle; workers spend resources on app workloads.

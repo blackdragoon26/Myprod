@@ -270,7 +270,7 @@ func actionArgs(r *http.Request) ([]string, error) {
 			return nil, errors.New("missing app")
 		}
 		return []string{"app", "deploy", app}, nil
-	case "node-freeze", "node-unfreeze", "node-drain", "node-join":
+	case "node-freeze", "node-unfreeze", "node-drain", "node-cancel-drain", "node-join":
 		node := strings.TrimSpace(r.FormValue("node"))
 		if node == "" {
 			return nil, errors.New("missing node")
@@ -604,7 +604,7 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
               <td>{{.Node}}</td>
               <td class="actions">
                 <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="app-render"><input type="hidden" name="app" value="{{.Name}}"><button>Render</button></form>
-                <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="app-deploy"><input type="hidden" name="app" value="{{.Name}}"><button class="primary">Deploy</button></form>
+                <form method="post" action="/action" class="inline" data-confirm="Are you sure? Deploying updates a live Nomad workload and can affect public traffic."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="app-deploy"><input type="hidden" name="app" value="{{.Name}}"><button class="primary">Deploy</button></form>
               </td>
             </tr>
           {{end}}</tbody>
@@ -625,10 +625,10 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
               <td><strong>{{.Name}}</strong><div class="muted">{{.Provider}}</div></td><td>{{.Role}}</td><td>{{.PublicIP}}</td><td>{{.OverlayIP}}</td>
               <td><span class="pill {{stateClass .State}}">{{.State}}</span></td>
               <td class="actions">
-                <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-freeze"><input type="hidden" name="node" value="{{.Name}}"><button>Freeze</button></form>
-                <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-unfreeze"><input type="hidden" name="node" value="{{.Name}}"><button>Unfreeze</button></form>
-                <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-drain"><input type="hidden" name="node" value="{{.Name}}"><button class="danger">Drain</button></form>
-                {{if ne .Role "control-plane"}}{{if .Joined}}<button disabled>Joined</button>{{else}}<form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-join"><input type="hidden" name="node" value="{{.Name}}"><button class="primary">Join</button></form>{{end}}{{end}}
+                <form method="post" action="/action" class="inline" data-confirm="Are you sure? Freeze makes the real Nomad node ineligible for new workloads."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-freeze"><input type="hidden" name="node" value="{{.Name}}"><button>Freeze</button></form>
+                <form method="post" action="/action" class="inline" data-confirm="Are you sure? Unfreeze lets Nomad schedule workloads on this node immediately."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-unfreeze"><input type="hidden" name="node" value="{{.Name}}"><button>Unfreeze</button></form>
+                {{if eq .State "draining"}}<form method="post" action="/action" class="inline" data-confirm="Are you sure? Cancelling drain leaves the node frozen until you explicitly unfreeze it."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-cancel-drain"><input type="hidden" name="node" value="{{.Name}}"><button class="danger">Cancel Drain</button></form>{{else}}<form method="post" action="/action" class="inline" data-confirm="Are you sure? Drain can migrate or stop live allocations and interrupt workloads."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-drain"><input type="hidden" name="node" value="{{.Name}}"><button class="danger">Drain</button></form>{{end}}
+                {{if ne .Role "control-plane"}}{{if .Joined}}<button disabled>Joined</button>{{else}}<form method="post" action="/action" class="inline" data-confirm="Are you sure? Join installs system services, networking, Docker, and Nomad on the VPS."><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-join"><input type="hidden" name="node" value="{{.Name}}"><button class="primary">Join</button></form>{{end}}{{end}}
               </td>
             </tr>
           {{end}}</tbody>
@@ -644,7 +644,7 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
       </section>
       <section class="span-12">
         <h2>Add VPS Node</h2>
-        <form method="post" action="/action" class="node-form">
+        <form method="post" action="/action" class="node-form" data-confirm="Are you sure? This records a new infrastructure node in the operator state.">
           <input type="hidden" name="csrf" value="{{.CSRF}}">
           <input type="hidden" name="action" value="node-add">
           <label>Name<input name="name" placeholder="do-worker-1" autocomplete="off"></label>
@@ -700,6 +700,7 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
       form.addEventListener("submit", async (event) => {
         if (!window.fetch || !window.FormData) return;
         event.preventDefault();
+        if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return;
         const button = event.submitter || form.querySelector("button");
         setRunning(button);
         try {

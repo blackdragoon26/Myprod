@@ -132,6 +132,25 @@ func TestStateTransitions(t *testing.T) {
 	if !state.Nodes["oracle-main"].Joined {
 		t.Fatal("expected joined node")
 	}
+	state.SetReserved("oracle-main", "project-alpha")
+	if state.Nodes["oracle-main"].ReservedFor != "project-alpha" || !state.Nodes["oracle-main"].Frozen {
+		t.Fatal("expected reservation to persist ownership and freeze the node")
+	}
+	state.SetReserved("oracle-main", "")
+	if state.Nodes["oracle-main"].ReservedFor != "" || !state.Nodes["oracle-main"].Frozen {
+		t.Fatal("releasing ownership should leave the node frozen")
+	}
+}
+
+func TestReservationRoundTrip(t *testing.T) {
+	state := State{Nodes: map[string]NodeState{
+		"worker-1": {Frozen: true, Joined: true, ReservedFor: "project-alpha"},
+	}}
+	roundTrip := parseState(formatState(state))
+	got := roundTrip.Nodes["worker-1"]
+	if !got.Frozen || !got.Joined || got.ReservedFor != "project-alpha" {
+		t.Fatalf("reservation round trip = %#v", got)
+	}
 }
 
 func TestNormalizeRemoteHome(t *testing.T) {

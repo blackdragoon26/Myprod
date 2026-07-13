@@ -27,7 +27,13 @@ V1 assumes the operator already has SSH access to each VPS. `poolctl` should acc
 
 ## Web Dashboard
 
-`poolctl web` is an operator surface with deploy, freeze, drain, render, guard, and status actions. It disables auth only for loopback development and requires `POOLCTL_WEB_PASSWORD` when bound to a non-loopback address. Do not expose it publicly until the hosted backend uses Oracle-local Nomad/systemd operations; copying the operator's private SSH key onto Oracle just to make the dashboard work is not an acceptable deployment model.
+`poolctl web` is the SSH-capable local setup surface. It disables auth only for loopback development and requires `POOLCTL_WEB_PASSWORD` when bound to a non-loopback address. Its node scheduling actions execute against Oracle's real Nomad API through the configured operator SSH key.
+
+The hosted dashboard calls the Oracle-local agent and never receives SSH private keys or the Nomad ACL token. The agent bearer token is stored in the operator browser only after `/status` validates it. Invalid tokens are removed. Use **Lock** to remove a valid token from browser storage.
+
+Powerful actions display specific confirmations describing scheduler or workload impact. Confirmations are an operator-safety mechanism, not an authorization boundary. The agent token, CORS allowlist, Nomad TLS, and Nomad ACLs enforce access.
+
+Project reservation validates a constrained project ID, refuses the control plane, refuses workers with active allocations, and disables Nomad eligibility before persisting ownership. Release leaves the node frozen so cleanup and scheduler re-entry remain separate decisions.
 
 ## Guard Behavior
 

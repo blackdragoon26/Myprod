@@ -41,9 +41,10 @@ type State struct {
 }
 
 type NodeState struct {
-	Frozen   bool
-	Draining bool
-	Joined   bool
+	Frozen      bool
+	Draining    bool
+	Joined      bool
+	ReservedFor string
 }
 
 type AppState struct {
@@ -58,6 +59,15 @@ func (c Config) HasNode(name string) bool {
 		}
 	}
 	return false
+}
+
+func (c Config) FindNode(name string) (Node, bool) {
+	for _, node := range c.Nodes {
+		if node.Name == name {
+			return node, true
+		}
+	}
+	return Node{}, false
 }
 
 func (c Config) FindApp(name string) (App, bool) {
@@ -103,6 +113,17 @@ func (s *State) SetJoined(name string, joined bool) {
 	s.ensure()
 	node := s.Nodes[name]
 	node.Joined = joined
+	s.Nodes[name] = node
+}
+
+func (s *State) SetReserved(name, project string) {
+	s.ensure()
+	node := s.Nodes[name]
+	node.ReservedFor = project
+	if project != "" {
+		node.Frozen = true
+		node.Draining = false
+	}
 	s.Nodes[name] = node
 }
 

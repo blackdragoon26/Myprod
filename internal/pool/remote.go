@@ -486,6 +486,48 @@ sudo journalctl -u nomad --since '10 minutes ago' --no-pager || true`)
 	return runLogged("ssh", "-i", key, target, cmd)
 }
 
+func ApplyNodeSchedulerAction(cfg Config, action, nodeName string) error {
+	control, ok := ControlPlaneNode(cfg)
+	if !ok {
+		return fmt.Errorf("config has no control-plane node")
+	}
+	if _, ok := findNode(cfg, nodeName); !ok {
+		return fmt.Errorf("unknown node %q", nodeName)
+	}
+	if err := requireNodeSSH(control); err != nil {
+		return err
+	}
+
+	var command string
+	switch action {
+	case "freeze":
+		command = `nomad node eligibility -disable "$node_id"`
+	case "unfreeze":
+		command = `nomad node eligibility -enable "$node_id"`
+	case "drain":
+		command = `nomad node drain -enable -detach -yes -m "poolctl local web drain" "$node_id"`
+	case "cancel-drain":
+		command = `nomad node drain -disable -keep-ineligible -yes -m "poolctl local web drain cancelled" "$node_id"`
+	default:
+		return fmt.Errorf("unknown node scheduler action %q", action)
+	}
+
+	key, err := expandHome(control.SSHKey)
+	if err != nil {
+		return err
+	}
+	target := fmt.Sprintf("%s@%s", control.SSHUser, control.PublicIP)
+	body := fmt.Sprintf(`node_name=%s
+node_id="$(nomad node status -json | python3 -c 'import json,sys; name=sys.argv[1]; nodes=json.load(sys.stdin); print(next((n["ID"] for n in nodes if n["Name"] == name), ""))' "$node_name")"
+if [ -z "$node_id" ]; then
+  echo "Nomad node not registered: $node_name" >&2
+  exit 1
+fi
+%s
+nomad node status "$node_id"`, shellQuote(nodeName), command)
+	return runLogged("ssh", "-i", key, target, remoteNomadCommand(control, body))
+}
+
 func remoteNomadCommand(node Node, body string) string {
 	return fmt.Sprintf(`set -euo pipefail
 token="$(for file in /var/lib/poolctl/nomad-acl/bootstrap.token /etc/nomad.d/acl/bootstrap.token /etc/nomad.d/bootstrap.token; do if sudo test -s "$file"; then sudo awk 'NF { print; exit }' "$file"; break; fi; done)"

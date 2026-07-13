@@ -20,9 +20,37 @@ import (
 const defaultAddr = "127.0.0.1:8790"
 
 type server struct {
-	addr  string
-	store pool.Store
-	token string
+	addr     string
+	store    pool.Store
+	token    string
+	runNomad func(context.Context, ...string) (string, error)
+}
+
+type nomadNode struct {
+	ID                    string `json:"ID"`
+	Name                  string `json:"Name"`
+	Status                string `json:"Status"`
+	SchedulingEligibility string `json:"SchedulingEligibility"`
+	Drain                 bool   `json:"Drain"`
+	Allocations           []struct {
+		ID            string `json:"ID"`
+		JobID         string `json:"JobID"`
+		ClientStatus  string `json:"ClientStatus"`
+		DesiredStatus string `json:"DesiredStatus"`
+	} `json:"Allocations"`
+}
+
+type nomadJobStatus struct {
+	Allocations []struct {
+		ID               string `json:"ID"`
+		JobID            string `json:"JobID"`
+		NodeName         string `json:"NodeName"`
+		ClientStatus     string `json:"ClientStatus"`
+		DesiredStatus    string `json:"DesiredStatus"`
+		DeploymentStatus *struct {
+			Healthy bool `json:"Healthy"`
+		} `json:"DeploymentStatus"`
+	} `json:"Allocations"`
 }
 
 type response struct {
@@ -78,7 +106,7 @@ func Serve(args []string) error {
 	if !isLoopback(addr) && len(token) < 32 {
 		return errors.New("POOLCTL_AGENT_TOKEN must be at least 32 characters when binding outside localhost")
 	}
-	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token}
+	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, runNomad: runNomad}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
@@ -110,6 +138,9 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error()})
 		return
+	}
+	if reconciled, reconcileErr := s.reconcileNodeState(r.Context(), cfg, state); reconcileErr == nil {
+		state = reconciled
 	}
 	writeJSON(w, http.StatusOK, response{
 		OK:      true,
@@ -149,12 +180,13 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Action string `json:"action"`
 		Name   string `json:"name"`
+		Value  string `json:"value"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		return
 	}
-	output, err := s.runAction(r.Context(), req.Action, req.Name)
+	output, err := s.runAction(r.Context(), req.Action, req.Name, req.Value)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error(), Output: output})
 		return
@@ -162,7 +194,7 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
 }
 
-func (s *server) runAction(ctx context.Context, action, name string) (string, error) {
+func (s *server) runAction(ctx context.Context, action, name, value string) (string, error) {
 	switch action {
 	case "control-status":
 		return run(ctx, "systemctl", "is-active", "nomad", "traefik", "wg-quick@wg0")
@@ -178,6 +210,13 @@ func (s *server) runAction(ctx context.Context, action, name string) (string, er
 		if !ok {
 			return "", fmt.Errorf("unknown app %q", name)
 		}
+		placement := app.PreferNode
+		if placement == "" {
+			placement = "oracle-main"
+		}
+		if nodeState := state.Nodes[placement]; nodeState.Frozen || nodeState.Draining || nodeState.ReservedFor != "" {
+			return "", fmt.Errorf("target node %s is unavailable: frozen=%t draining=%t reserved_for=%q", placement, nodeState.Frozen, nodeState.Draining, nodeState.ReservedFor)
+		}
 		file, err := pool.RenderAppJob(cfg, name)
 		if err != nil {
 			return "", err
@@ -186,19 +225,19 @@ func (s *server) runAction(ctx context.Context, action, name string) (string, er
 		if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
 			return "", err
 		}
-		out, err := runNomad(ctx, "job", "run", tmpDir+"/"+file.Path)
+		out, err := s.nomad(ctx, "job", "run", tmpDir+"/"+file.Path)
 		if err != nil {
 			return out, err
 		}
-		placement := app.PreferNode
-		if placement == "" {
-			placement = "oracle-main"
+		statusOut, statusErr := s.verifyJobDeployment(ctx, name, placement)
+		if statusErr != nil {
+			return out + "\nDeployment was submitted, but verification failed:\n" + statusOut, statusErr
 		}
 		state.SetApp(app.Name, placement, "deployed")
 		if err := s.store.SaveState(state); err != nil {
 			return out, err
 		}
-		return out, nil
+		return out + "\nVerified Nomad job status:\n" + statusOut, nil
 	case "app-render":
 		if name == "" {
 			return "", errors.New("missing app name")
@@ -215,7 +254,7 @@ func (s *server) runAction(ctx context.Context, action, name string) (string, er
 			return "", err
 		}
 		return "rendered /tmp/poolctl-agent-rendered/" + file.Path + "\n", nil
-	case "node-freeze", "node-unfreeze", "node-drain":
+	case "node-freeze", "node-unfreeze", "node-drain", "node-cancel-drain", "node-reserve", "node-release":
 		if name == "" {
 			return "", errors.New("missing node name")
 		}
@@ -223,24 +262,244 @@ func (s *server) runAction(ctx context.Context, action, name string) (string, er
 		if err != nil {
 			return "", err
 		}
-		if !cfg.HasNode(name) {
+		node, ok := cfg.FindNode(name)
+		if !ok {
 			return "", fmt.Errorf("unknown node %q", name)
 		}
+		liveNode, err := s.findNomadNode(ctx, name)
+		if err != nil {
+			return "", err
+		}
+		var output string
 		switch action {
 		case "node-freeze":
+			output, err = s.nomad(ctx, "node", "eligibility", "-disable", liveNode.ID)
+			if err != nil {
+				return output, err
+			}
 			state.SetFrozen(name, true)
 		case "node-unfreeze":
+			current := state.Nodes[name]
+			if current.ReservedFor != "" {
+				return "", fmt.Errorf("node is reserved for %q; release the reservation before unfreezing", current.ReservedFor)
+			}
+			if current.Draining || liveNode.Drain {
+				return "", errors.New("node is draining; cancel the drain before unfreezing")
+			}
+			output, err = s.nomad(ctx, "node", "eligibility", "-enable", liveNode.ID)
+			if err != nil {
+				return output, err
+			}
 			state.SetFrozen(name, false)
 		case "node-drain":
+			if current := state.Nodes[name]; current.ReservedFor != "" {
+				return "", fmt.Errorf("node is reserved for %q; release the reservation before draining", current.ReservedFor)
+			}
+			output, err = s.nomad(ctx, "node", "drain", "-enable", "-detach", "-yes", "-m", "poolctl web drain", liveNode.ID)
+			if err != nil {
+				return output, err
+			}
 			state.SetDraining(name, true)
+		case "node-cancel-drain":
+			output, err = s.nomad(ctx, "node", "drain", "-disable", "-keep-ineligible", "-yes", "-m", "poolctl web drain cancelled", liveNode.ID)
+			if err != nil {
+				return output, err
+			}
+			state.SetDraining(name, false)
+			state.SetFrozen(name, true)
+		case "node-reserve":
+			project := strings.TrimSpace(value)
+			if !validProjectID(project) {
+				return "", errors.New("project id must contain only letters, numbers, dash, or underscore")
+			}
+			if node.Role == "control-plane" {
+				return "", errors.New("control-plane nodes cannot be reserved for projects")
+			}
+			current := state.Nodes[name]
+			if current.ReservedFor != "" && current.ReservedFor != project {
+				return "", fmt.Errorf("node is already reserved for %q", current.ReservedFor)
+			}
+			allocations, allocErr := s.activeAllocations(ctx, liveNode.ID)
+			if allocErr != nil {
+				return "", allocErr
+			}
+			if len(allocations) != 0 {
+				return "", fmt.Errorf("node has active allocations (%s); drain it before reserving", strings.Join(allocations, ", "))
+			}
+			output, err = s.nomad(ctx, "node", "eligibility", "-disable", liveNode.ID)
+			if err != nil {
+				return output, err
+			}
+			state.SetReserved(name, project)
+			output += fmt.Sprintf("\nReserved %s exclusively for project %s.\n", name, project)
+		case "node-release":
+			current := state.Nodes[name]
+			if current.ReservedFor == "" {
+				return "", errors.New("node has no project reservation")
+			}
+			project := current.ReservedFor
+			state.SetReserved(name, "")
+			state.SetFrozen(name, true)
+			output = fmt.Sprintf("Released project %s from %s. The node remains ineligible until Unfreeze is explicitly confirmed.\n", project, name)
 		}
 		if err := s.store.SaveState(state); err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%s applied to %s\n", action, name), nil
+		return output + fmt.Sprintf("%s applied to %s\n", action, name), nil
 	default:
 		return "", fmt.Errorf("unknown action %q", action)
 	}
+}
+
+func (s *server) nomad(ctx context.Context, args ...string) (string, error) {
+	if s.runNomad == nil {
+		return runNomad(ctx, args...)
+	}
+	return s.runNomad(ctx, args...)
+}
+
+func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode string) (string, error) {
+	var lastOutput string
+	var lastReason string
+	for attempt := 0; attempt < 15; attempt++ {
+		out, err := s.nomad(ctx, "job", "status", "-json", jobName)
+		lastOutput = out
+		if err != nil {
+			lastReason = fmt.Sprintf("read job status: %v", err)
+		} else {
+			verified, reason, parseErr := deploymentVerified([]byte(out), jobName, expectedNode)
+			if parseErr != nil {
+				return out, parseErr
+			}
+			if verified {
+				return out, nil
+			}
+			lastReason = reason
+		}
+		if attempt < 14 {
+			select {
+			case <-ctx.Done():
+				return lastOutput, ctx.Err()
+			case <-time.After(2 * time.Second):
+			}
+		}
+	}
+	return lastOutput, fmt.Errorf("job %s did not become healthy on %s within 30 seconds: %s", jobName, expectedNode, lastReason)
+}
+
+func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string, error) {
+	var statuses []nomadJobStatus
+	if err := json.Unmarshal(raw, &statuses); err != nil {
+		var status nomadJobStatus
+		if objectErr := json.Unmarshal(raw, &status); objectErr != nil {
+			return false, "", fmt.Errorf("parse Nomad job status: %w", err)
+		}
+		statuses = []nomadJobStatus{status}
+	}
+	seen := 0
+	for _, status := range statuses {
+		for _, allocation := range status.Allocations {
+			if allocation.JobID != jobName {
+				continue
+			}
+			seen++
+			if allocation.NodeName == expectedNode && allocation.DesiredStatus == "run" && allocation.ClientStatus == "running" && allocation.DeploymentStatus != nil && allocation.DeploymentStatus.Healthy {
+				return true, "", nil
+			}
+		}
+	}
+	if seen == 0 {
+		return false, "no allocations were reported", nil
+	}
+	return false, fmt.Sprintf("%d allocation(s) exist but none are healthy and running on %s", seen, expectedNode), nil
+}
+
+func (s *server) listNomadNodes(ctx context.Context) ([]nomadNode, error) {
+	out, err := s.nomad(ctx, "node", "status", "-json")
+	if err != nil {
+		return nil, fmt.Errorf("list Nomad nodes: %w: %s", err, strings.TrimSpace(out))
+	}
+	var nodes []nomadNode
+	if err := json.Unmarshal([]byte(out), &nodes); err != nil {
+		return nil, fmt.Errorf("parse Nomad node list: %w", err)
+	}
+	return nodes, nil
+}
+
+func (s *server) findNomadNode(ctx context.Context, name string) (nomadNode, error) {
+	nodes, err := s.listNomadNodes(ctx)
+	if err != nil {
+		return nomadNode{}, err
+	}
+	for _, node := range nodes {
+		if node.Name == name {
+			return node, nil
+		}
+	}
+	return nomadNode{}, fmt.Errorf("Nomad node %q is not registered", name)
+}
+
+func (s *server) activeAllocations(ctx context.Context, nodeID string) ([]string, error) {
+	out, err := s.nomad(ctx, "node", "status", "-json", nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("read Nomad node allocations: %w: %s", err, strings.TrimSpace(out))
+	}
+	var node nomadNode
+	if err := json.Unmarshal([]byte(out), &node); err != nil {
+		return nil, fmt.Errorf("parse Nomad node allocations: %w", err)
+	}
+	var active []string
+	for _, allocation := range node.Allocations {
+		if allocation.DesiredStatus == "run" && allocation.ClientStatus != "complete" && allocation.ClientStatus != "failed" {
+			active = append(active, allocation.JobID+"/"+allocation.ID[:min(8, len(allocation.ID))])
+		}
+	}
+	return active, nil
+}
+
+func (s *server) reconcileNodeState(ctx context.Context, cfg pool.Config, state pool.State) (pool.State, error) {
+	nodes, err := s.listNomadNodes(ctx)
+	if err != nil {
+		return state, err
+	}
+	byName := make(map[string]nomadNode, len(nodes))
+	for _, node := range nodes {
+		byName[node.Name] = node
+	}
+	changed := false
+	for _, configured := range cfg.Nodes {
+		live, ok := byName[configured.Name]
+		if !ok {
+			continue
+		}
+		current := state.Nodes[configured.Name]
+		frozen := live.SchedulingEligibility != "eligible"
+		if current.Frozen != frozen || current.Draining != live.Drain {
+			current.Frozen = frozen
+			current.Draining = live.Drain
+			state.Nodes[configured.Name] = current
+			changed = true
+		}
+	}
+	if changed {
+		if err := s.store.SaveState(state); err != nil {
+			return state, err
+		}
+	}
+	return state, nil
+}
+
+func validProjectID(raw string) bool {
+	if raw == "" {
+		return false
+	}
+	for _, r := range raw {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func (s *server) authorized(w http.ResponseWriter, r *http.Request) bool {
@@ -294,6 +553,9 @@ func smoke(ctx context.Context, label, url string) check {
 
 func runNomad(ctx context.Context, args ...string) (string, error) {
 	token := firstExistingToken()
+	if token == "" {
+		return "", errors.New("Nomad ACL token is missing")
+	}
 	fullArgs := append([]string{"env", "NOMAD_ADDR=https://10.44.0.1:4646", "NOMAD_CACERT=/etc/nomad.d/tls/nomad-agent-ca.pem", "NOMAD_TOKEN=" + token, "nomad"}, args...)
 	return run(ctx, "sudo", fullArgs...)
 }

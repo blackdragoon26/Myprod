@@ -105,6 +105,17 @@ https://myprod-control.vercel.app/
 
 It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/smoke`, and can call the Oracle-local `poolctl agent` through `https://api.sankalpjha.dev/__poolctl` after unlocking with the agent token. The dashboard includes links to the repo, docs, and creator site.
 
+Hosted node controls operate on the real Nomad scheduler:
+
+- **Freeze** disables scheduling eligibility while leaving existing allocations running.
+- **Unfreeze** restores scheduling eligibility only when the node is not reserved or draining.
+- **Drain** starts a detached Nomad drain; **Cancel drain** stops it and leaves the node frozen.
+- **Reserve** assigns an empty worker exclusively to a project and makes it ineligible.
+- **Release** clears project ownership but deliberately leaves the worker frozen until a separate Unfreeze confirmation.
+- **Deploy** submits the rendered job and verifies that Nomad can read its resulting status.
+
+Powerful controls require an action-specific confirmation in both hosted and local dashboards. A confirmation reduces operator mistakes; the Oracle agent token and Nomad ACLs remain the actual authorization boundary.
+
 Deployment notes live in [docs/deployment.md](docs/deployment.md). Production should be Git-driven from `main` through Vercel Git Integration.
 
 Before any agent adds another worker, follow
@@ -173,5 +184,6 @@ Running `work/rendered/bootstrap-control-plane.sh` on Oracle will mutate the ser
 
 - Nomad should bind to WireGuard/private addresses, not public interfaces.
 - Only SSH, HTTP, HTTPS, and WireGuard should be public.
-- Free-tier guard freezes new placements instead of killing live apps.
-- Draining a node marks it frozen first, then prepares workloads to move away.
+- A frozen node is made ineligible in Nomad; existing allocations continue running.
+- Draining a node invokes Nomad drain and can migrate or stop allocations.
+- Project reservations are worker-only, require no active allocations, and preserve exclusive ownership in the Oracle agent state.

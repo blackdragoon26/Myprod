@@ -310,6 +310,9 @@ func parseState(raw string) State {
 			if strings.HasPrefix(trimmed, "joined:") {
 				node.Joined = value(trimmed) == "true"
 			}
+			if strings.HasPrefix(trimmed, "reserved_for:") {
+				node.ReservedFor = value(trimmed)
+			}
 			state.Nodes[current] = node
 		}
 		if section == "apps" {
@@ -335,6 +338,7 @@ func formatState(state State) string {
 		b.WriteString(fmt.Sprintf("    frozen: %t\n", node.Frozen))
 		b.WriteString(fmt.Sprintf("    draining: %t\n", node.Draining))
 		b.WriteString(fmt.Sprintf("    joined: %t\n", node.Joined))
+		b.WriteString(fmt.Sprintf("    reserved_for: %s\n", node.ReservedFor))
 	}
 	b.WriteString("apps:\n")
 	for _, name := range sortedAppStateNames(state) {

@@ -53,6 +53,20 @@ Use this when the Vercel dashboard can access the GitHub account:
 
 The dashboard is a static `public/index.html` plus the serverless smoke endpoint at `api/smoke.js`.
 
+## Oracle Agent Deployment
+
+The static dashboard and Oracle agent are deployed separately. A Git push updates Vercel, but it does not replace `/usr/local/bin/poolctl` on Oracle.
+
+For an agent change:
+
+1. Run `go test ./...`.
+2. Build a static Linux ARM64 binary for Oracle.
+3. Copy it to `/tmp` over SSH.
+4. Back up the current binary, atomically install the new binary, and restart only `poolctl-agent`.
+5. Verify the agent health route, authenticated status, Nomad state, and public smoke checks.
+
+Never place `POOLCTL_AGENT_TOKEN` in a build command, repository file, shell history, or deployment log.
+
 ## Manual Deploy
 
 Manual deploys are useful for quick iteration, but they are not the long-term source of truth. Production should be Git-driven so the deployed dashboard always matches `main`.

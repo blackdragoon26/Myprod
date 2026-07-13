@@ -196,6 +196,36 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ---------- Confirmation dialog ---------- */
+    dialog {
+      width: min(480px, calc(100vw - 32px));
+      padding: 0;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius);
+      box-shadow: 0 24px 80px color-mix(in oklab, #000 35%, transparent);
+    }
+    dialog::backdrop { background: color-mix(in oklab, #000 55%, transparent); }
+    .confirm-dialog { padding: 20px; }
+    .confirm-dialog h2 { color: var(--text); font-size: 17px; letter-spacing: 0; text-transform: none; }
+    .confirm-dialog p { margin-top: 10px; color: var(--text-muted); }
+    .confirm-warning {
+      margin-top: 14px;
+      padding: 10px 12px;
+      color: var(--bad);
+      background: var(--bad-bg);
+      border: 1px solid var(--bad-border);
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .confirm-field { display: grid; gap: 6px; margin-top: 14px; }
+    .confirm-field label { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+    .confirm-field input { width: 100%; }
+    .confirm-error { min-height: 18px; margin-top: 6px; color: var(--bad); font-size: 12px; }
+    .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
     /* ---------- Cards ---------- */
     .card {
       background: var(--surface);
@@ -572,6 +602,23 @@
     </div>
   </main>
 
+  <dialog id="confirmation-dialog" aria-labelledby="confirmation-title">
+    <div class="confirm-dialog">
+      <h2 id="confirmation-title">Are you sure?</h2>
+      <p id="confirmation-body"></p>
+      <div id="confirmation-warning" class="confirm-warning"></div>
+      <div id="confirmation-field" class="confirm-field" hidden>
+        <label for="confirmation-value">Project ID</label>
+        <input id="confirmation-value" type="text" placeholder="project-name" autocomplete="off">
+      </div>
+      <div id="confirmation-error" class="confirm-error" role="alert"></div>
+      <div class="confirm-actions">
+        <button id="confirmation-cancel" type="button">Cancel</button>
+        <button id="confirmation-accept" type="button" class="danger">Confirm</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     /* ---------- Theme ---------- */
     (function initTheme() {
@@ -625,6 +672,15 @@
     const controlSummary = document.getElementById("control-summary");
     const workerSummary = document.getElementById("worker-summary");
     const trafficBars = [...document.querySelectorAll("#traffic-chart .bar")];
+    const confirmationDialog = document.getElementById("confirmation-dialog");
+    const confirmationTitle = document.getElementById("confirmation-title");
+    const confirmationBody = document.getElementById("confirmation-body");
+    const confirmationWarning = document.getElementById("confirmation-warning");
+    const confirmationField = document.getElementById("confirmation-field");
+    const confirmationValue = document.getElementById("confirmation-value");
+    const confirmationError = document.getElementById("confirmation-error");
+    const confirmationCancel = document.getElementById("confirmation-cancel");
+    const confirmationAccept = document.getElementById("confirmation-accept");
     const AGENT = "https://api.sankalpjha.dev/__poolctl/api";
     let actionRunning = false;
     let latencyHistory = [];
@@ -659,7 +715,7 @@
       const text = value || "unknown";
       const normalized = String(text).toLowerCase();
       const ok = ["active", "deployed", "ready", "joined", "200 ok", "healthy"].includes(normalized);
-      const warn = ["locked", "frozen", "draining", "unknown", "configured"].includes(normalized);
+      const warn = ["locked", "frozen", "draining", "reserved", "unknown", "configured"].includes(normalized);
       return pill(text, ok ? "ok" : warn ? "warn" : "bad");
     }
 
@@ -779,7 +835,13 @@
         const verb = action.replace("node-", "").replace("-", " ");
         return `${verb[0].toUpperCase()}${verb.slice(1)} ${name || "node"}`;
       }
-      return { "control-status": "Control status", "app-deploy": "Deploy sample-api" }[action] || action;
+      return {
+        "control-status": "Control status",
+        "app-deploy": `Deploy ${name || "app"}`,
+        "node-reserve": `Reserve ${name}`,
+        "node-release": `Release ${name}`,
+        "node-cancel-drain": `Cancel drain on ${name}`
+      }[action] || action;
     }
 
     function actionMessage(action, name, data) {
@@ -821,13 +883,13 @@
       const workerNodes = configuredNodes.filter((node) => (node.Role || node.role) !== "control-plane");
       const isReady = (node) => {
         const live = nodeState[node.Name] || {};
-        return Boolean(live.Joined) && !live.Frozen && !live.Draining;
+        return Boolean(live.Joined) && !live.Frozen && !live.Draining && !live.ReservedFor;
       };
       controlSummary.textContent = controlNodes.length ? `${controlNodes.filter(isReady).length}/${controlNodes.length} ready` : "none";
       workerSummary.textContent = workerNodes.length ? `${workerNodes.filter(isReady).length}/${workerNodes.length} ready` : "none";
       nodeList.innerHTML = configuredNodes.map((node) => {
         const live = nodeState[node.Name] || {};
-        const stateText = live.Draining ? "draining" : live.Frozen ? "frozen" : live.Joined ? "joined" : "ready";
+        const stateText = live.ReservedFor ? "reserved" : live.Draining ? "draining" : live.Frozen ? "frozen" : live.Joined ? "joined" : "ready";
         return `<div class="node-card">
           <div>
             <h3>${escapeHTML(node.Name)}</h3>
@@ -835,25 +897,35 @@
               ${pill(node.Provider || "provider", "plain")}
               ${pill(node.PublicIP || "no public IP", "plain")}
               ${pill(node.OverlayIP || "no overlay IP", "plain")}
+              ${live.ReservedFor ? pill(`project: ${live.ReservedFor}`, "warn") : ""}
             </div>
           </div>
           <div>${statePill(stateText)}</div>
         </div>`;
       }).join("") || `<div class="empty">No nodes configured.</div>`;
 
-      nodeActions.innerHTML = configuredNodes.map((node) => `
+      nodeActions.innerHTML = configuredNodes.map((node) => {
+        const live = nodeState[node.Name] || {};
+        const reserved = Boolean(live.ReservedFor);
+        const draining = Boolean(live.Draining);
+        const frozen = Boolean(live.Frozen);
+        const isWorker = (node.Role || node.role) !== "control-plane";
+        return `
         <div class="node-card">
           <div>
             <h3>${escapeHTML(node.Name)}</h3>
             <p class="muted" style="font-size:12px;margin-top:4px">${escapeHTML(node.Provider || "provider")} · ${escapeHTML(node.PublicIP || "no public IP")}</p>
           </div>
           <div class="node-actions">
-            <button data-action="node-freeze" data-name="${escapeHTML(node.Name)}">Freeze</button>
-            <button data-action="node-unfreeze" data-name="${escapeHTML(node.Name)}">Unfreeze</button>
-            <button class="danger" data-action="node-drain" data-name="${escapeHTML(node.Name)}">Drain</button>
+            ${isWorker && !reserved ? `<button data-action="node-reserve" data-name="${escapeHTML(node.Name)}">Reserve</button>` : ""}
+            ${reserved ? `<button class="danger" data-action="node-release" data-name="${escapeHTML(node.Name)}">Release ${escapeHTML(live.ReservedFor)}</button>` : ""}
+            ${!frozen ? `<button data-action="node-freeze" data-name="${escapeHTML(node.Name)}">Freeze</button>` : ""}
+            ${frozen && !reserved && !draining ? `<button data-action="node-unfreeze" data-name="${escapeHTML(node.Name)}">Unfreeze</button>` : ""}
+            ${!reserved && !draining ? `<button class="danger" data-action="node-drain" data-name="${escapeHTML(node.Name)}">Drain</button>` : ""}
+            ${draining ? `<button class="danger" data-action="node-cancel-drain" data-name="${escapeHTML(node.Name)}">Cancel drain</button>` : ""}
           </div>
         </div>
-      `).join("") || `<div class="empty">No nodes configured.</div>`;
+      `}).join("") || `<div class="empty">No nodes configured.</div>`;
       markUpdated(data.Updated || data.updated);
       bindActionButtons();
     }
@@ -888,15 +960,100 @@
       if (active && button) button.classList.add("is-loading");
     }
 
+    function actionConfirmation(action, name) {
+      const definitions = {
+        "app-deploy": {
+          title: `Deploy ${name}?`,
+          body: "This submits or updates a live Nomad workload and may replace its running allocation.",
+          warning: "Are you sure? Public traffic can be affected while the replacement becomes healthy.",
+          label: "Deploy"
+        },
+        "node-freeze": {
+          title: `Freeze ${name}?`,
+          body: "This makes the real Nomad node ineligible for new allocations. Existing allocations keep running.",
+          warning: "Are you sure? New workloads will no longer schedule on this node.",
+          label: "Freeze"
+        },
+        "node-unfreeze": {
+          title: `Unfreeze ${name}?`,
+          body: "This makes the real Nomad node eligible for new allocations again.",
+          warning: "Are you sure? The scheduler may place workloads on this node immediately.",
+          label: "Unfreeze"
+        },
+        "node-drain": {
+          title: `Drain ${name}?`,
+          body: "Nomad will migrate or stop existing allocations and prevent new allocations on this node.",
+          warning: "Are you sure? Workloads without another eligible destination can be interrupted.",
+          label: "Drain"
+        },
+        "node-cancel-drain": {
+          title: `Cancel drain on ${name}?`,
+          body: "This stops the active Nomad drain but deliberately keeps the node frozen.",
+          warning: "Are you sure? Verify workload state before separately unfreezing the node.",
+          label: "Cancel drain"
+        },
+        "node-reserve": {
+          title: `Reserve ${name} for a project?`,
+          body: "The worker must be empty. Myprod will disable real Nomad scheduling and record one project as its exclusive owner.",
+          warning: "Are you sure? No other Myprod project can use this node until the reservation is released.",
+          label: "Reserve",
+          project: true
+        },
+        "node-release": {
+          title: `Release ${name}?`,
+          body: "This clears the project owner but leaves the node frozen as a safety boundary.",
+          warning: "Are you sure? Clean the project environment before using the separate Unfreeze action.",
+          label: "Release"
+        }
+      };
+      return definitions[action] || null;
+    }
+
+    function confirmPowerfulAction(action, name) {
+      const definition = actionConfirmation(action, name);
+      if (!definition) return Promise.resolve("");
+      confirmationTitle.textContent = definition.title;
+      confirmationBody.textContent = definition.body;
+      confirmationWarning.textContent = definition.warning;
+      confirmationField.hidden = !definition.project;
+      confirmationValue.value = "";
+      confirmationError.textContent = "";
+      confirmationAccept.textContent = definition.label;
+      confirmationDialog.showModal();
+      if (definition.project) confirmationValue.focus();
+      return new Promise((resolve) => {
+        const finish = (value) => {
+          confirmationCancel.onclick = null;
+          confirmationAccept.onclick = null;
+          confirmationDialog.oncancel = null;
+          confirmationDialog.close();
+          resolve(value);
+        };
+        confirmationCancel.onclick = () => finish(null);
+        confirmationDialog.oncancel = (event) => { event.preventDefault(); finish(null); };
+        confirmationAccept.onclick = () => {
+          const value = definition.project ? confirmationValue.value.trim() : "";
+          if (definition.project && !/^[A-Za-z0-9_-]+$/.test(value)) {
+            confirmationError.textContent = "Use only letters, numbers, dash, or underscore.";
+            confirmationValue.focus();
+            return;
+          }
+          finish(value);
+        };
+      });
+    }
+
     async function runAction(button) {
       const action = button.dataset.action;
       const name = button.dataset.name || "";
+      const value = await confirmPowerfulAction(action, name);
+      if (value === null) return;
       setActionBusy(true, button);
       output.textContent = `Running ${actionLabel(action, name)}...`;
       try {
         const data = await agentFetch("/action", {
           method: "POST",
-          body: JSON.stringify({ action, name })
+          body: JSON.stringify({ action, name, value })
         });
         output.textContent = actionMessage(action, name, data);
         await refreshAgent({ silent: true });

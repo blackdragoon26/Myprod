@@ -50,8 +50,24 @@ Consul can be introduced later if the project needs KV storage, Connect, or mult
 ## Node States
 
 - `ready`: node may receive new placements.
-- `frozen`: existing workloads stay, but new app placement is blocked.
-- `draining`: node is frozen and workloads should be moved away.
+- `frozen`: Nomad scheduling eligibility is disabled; existing allocations stay.
+- `draining`: Nomad drain is active and allocations are being migrated or stopped.
+- `reserved`: an empty worker is owned exclusively by one project and remains Nomad-ineligible.
+
+The Oracle agent reconciles `frozen` and `draining` from Nomad whenever the hosted dashboard requests status. These are scheduler states, not presentation-only labels.
+
+## Project Reservations
+
+Reservations are generic capacity ownership, independent of application type or toolchain:
+
+1. The operator chooses any registered worker and supplies a safe project ID.
+2. The agent refuses control-plane nodes and workers with active allocations.
+3. The agent disables the real Nomad node's scheduling eligibility.
+4. The Oracle state records `reserved_for: <project>`.
+5. The project can use the whole worker through its existing SSH access without sharing it with Myprod workloads.
+6. Release clears ownership but keeps the node frozen. A separate, confirmed Unfreeze action is required before Nomad can reuse it.
+
+This machine boundary is appropriate for projects that install host packages, manipulate network namespaces, or need privileged runtimes. A reservation protects other pool nodes; it cannot prevent a project administrator from damaging its own reserved worker.
 
 ## Operator Flow
 

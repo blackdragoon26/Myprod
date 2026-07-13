@@ -23,6 +23,7 @@ Usage:
   poolctl node freeze <node>
   poolctl node unfreeze <node>
   poolctl node drain <node>
+  poolctl node cancel-drain <node>
   poolctl node join <node>
   poolctl app render <app>
   poolctl app deploy <app>
@@ -181,7 +182,7 @@ func node(store pool.Store, args []string) error {
 			return err
 		}
 		return pool.PrintNodes(cfg, state)
-	case "freeze", "unfreeze", "drain":
+	case "freeze", "unfreeze", "drain", "cancel-drain":
 		if len(args) != 2 {
 			return fmt.Errorf("usage: poolctl node %s <node>", args[0])
 		}
@@ -211,6 +212,12 @@ func updateNode(store pool.Store, action, name string) error {
 	if !cfg.HasNode(name) {
 		return fmt.Errorf("unknown node %q", name)
 	}
+	if action == "unfreeze" && state.Nodes[name].ReservedFor != "" {
+		return fmt.Errorf("node %s is reserved for %q; release it from the hosted control plane first", name, state.Nodes[name].ReservedFor)
+	}
+	if err := pool.ApplyNodeSchedulerAction(cfg, action, name); err != nil {
+		return err
+	}
 
 	switch action {
 	case "freeze":
@@ -222,6 +229,10 @@ func updateNode(store pool.Store, action, name string) error {
 	case "drain":
 		state.SetDraining(name, true)
 		fmt.Printf("node %s marked draining\n", name)
+	case "cancel-drain":
+		state.SetDraining(name, false)
+		state.SetFrozen(name, true)
+		fmt.Printf("node %s drain cancelled; node remains frozen\n", name)
 	}
 
 	return store.SaveState(state)
