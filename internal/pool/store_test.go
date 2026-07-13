@@ -31,6 +31,85 @@ func TestStoreInitAndLoad(t *testing.T) {
 	}
 }
 
+func TestStoreAddNodePersistsConfigAndState(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+
+	err := store.AddNode(Node{
+		Name:      "do-worker-1",
+		Role:      "worker",
+		Provider:  "digitalocean",
+		CostMode:  "credit_temporary",
+		Placement: "burst",
+		PublicIP:  "203.0.113.10",
+		SSHUser:   "ubuntu",
+		SSHKey:    "~/.ssh/keys/digitalocean-worker.key",
+		OverlayIP: "10.44.0.2",
+		Guard: Guard{
+			Enabled:          true,
+			MaxDiskPercent:   80,
+			MaxMemoryPercent: 85,
+			MaxLoad1:         3.5,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.HasNode("do-worker-1") {
+		t.Fatal("expected persisted DigitalOcean node")
+	}
+	if state.Nodes["do-worker-1"].Frozen || state.Nodes["do-worker-1"].Draining {
+		t.Fatal("new node should start ready in state")
+	}
+	if state.Nodes["do-worker-1"].Joined {
+		t.Fatal("new node should not be marked joined before bootstrap")
+	}
+	if len(cfg.Apps) != 1 || cfg.Apps[0].Name != "sample-api" {
+		t.Fatal("adding a node should preserve app config")
+	}
+}
+
+func TestStoreSetNodeJoined(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetNodeJoined("oracle-main", true); err != nil {
+		t.Fatal(err)
+	}
+	_, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !state.Nodes["oracle-main"].Joined {
+		t.Fatal("expected joined marker to persist")
+	}
+}
+
+func TestStoreAddNodeRejectsDuplicateOverlay(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	err := store.AddNode(Node{
+		Name:      "bad-worker",
+		PublicIP:  "203.0.113.10",
+		SSHUser:   "ubuntu",
+		SSHKey:    "~/.ssh/keys/digitalocean-worker.key",
+		OverlayIP: "10.44.0.1",
+	})
+	if err == nil {
+		t.Fatal("expected duplicate overlay IP to fail")
+	}
+}
+
 func TestStateTransitions(t *testing.T) {
 	state := State{}
 	state.SetFrozen("oracle-main", true)
@@ -48,6 +127,10 @@ func TestStateTransitions(t *testing.T) {
 	state.SetApp("sample-api", "oracle-main", "deployed")
 	if state.Apps["sample-api"].Node != "oracle-main" || state.Apps["sample-api"].Status != "deployed" {
 		t.Fatal("expected app deployment state")
+	}
+	state.SetJoined("oracle-main", true)
+	if !state.Nodes["oracle-main"].Joined {
+		t.Fatal("expected joined node")
 	}
 }
 
@@ -199,5 +282,63 @@ func TestRenderAppJob(t *testing.T) {
 	}
 	if !strings.Contains(file.Content, "tls.certresolver=letsencrypt") {
 		t.Fatal("expected HTTPS router to use the Let's Encrypt resolver")
+	}
+}
+
+func TestRenderWorkerJoin(t *testing.T) {
+	files, err := RenderWorkerJoin(
+		Node{Name: "oracle-main", PublicIP: "140.245.5.201", OverlayIP: "10.44.0.1"},
+		Node{Name: "do-worker-1", PublicIP: "188.166.182.174", OverlayIP: "10.44.0.2"},
+		"control-public-key",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 3 {
+		t.Fatalf("expected 3 files, got %d", len(files))
+	}
+	var bootstrap, client string
+	for _, file := range files {
+		switch file.Path {
+		case "bootstrap-worker.sh":
+			bootstrap = file.Content
+		case "nomad/client.hcl":
+			client = file.Content
+		}
+	}
+	if !strings.Contains(bootstrap, `CONTROL_PUBLIC_IP="140.245.5.201"`) {
+		t.Fatal("worker bootstrap should point WireGuard at the control-plane public IP")
+	}
+	if !strings.Contains(bootstrap, "ListenPort = 51820") {
+		t.Fatal("worker WireGuard config should listen on the port Oracle uses for its peer endpoint")
+	}
+	if strings.Contains(bootstrap, "__NOMAD_AGENT_TOKEN__") || strings.Contains(bootstrap, "nomad/agent.token") {
+		t.Fatal("worker bootstrap should not render unsupported Nomad agent token stanzas")
+	}
+	if !strings.Contains(bootstrap, "wait_for_wireguard") || !strings.Contains(bootstrap, "systemctl restart nomad") {
+		t.Fatal("worker bootstrap should verify WireGuard before starting Nomad")
+	}
+	if !strings.Contains(client, `name       = "do-worker-1"`) {
+		t.Fatal("Nomad client should use worker node name")
+	}
+	if !strings.Contains(client, `servers = ["10.44.0.1:4647"]`) {
+		t.Fatal("Nomad client should connect to the control plane over WireGuard")
+	}
+	if strings.Contains(client, "tokens") || strings.Contains(client, "__NOMAD_AGENT_TOKEN__") {
+		t.Fatal("Nomad client should avoid unsupported ACL token config")
+	}
+	if !strings.Contains(client, `cert_file              = "/etc/nomad.d/tls/global-client-nomad.pem"`) {
+		t.Fatal("Nomad client should use client TLS material")
+	}
+}
+
+func TestExtractWireGuardKeyIgnoresCommandOutput(t *testing.T) {
+	raw := `Hit:1 http://mirrors.digitalocean.com/ubuntu noble InRelease
+Reading package lists...
+reBAzXk6qSuwYy8Mtle4htQEHDN0kDoRydTcCg0jU0A=
+`
+	got := extractWireGuardKey(raw)
+	if got != "reBAzXk6qSuwYy8Mtle4htQEHDN0kDoRydTcCg0jU0A=" {
+		t.Fatalf("extractWireGuardKey = %q", got)
 	}
 }

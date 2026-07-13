@@ -23,6 +23,7 @@ Usage:
   poolctl node freeze <node>
   poolctl node unfreeze <node>
   poolctl node drain <node>
+  poolctl node join <node>
   poolctl app render <app>
   poolctl app deploy <app>
   poolctl app status <app>
@@ -185,6 +186,18 @@ func node(store pool.Store, args []string) error {
 			return fmt.Errorf("usage: poolctl node %s <node>", args[0])
 		}
 		return updateNode(store, args[0], args[1])
+	case "join":
+		if len(args) != 2 {
+			return errors.New("usage: poolctl node join <node>")
+		}
+		cfg, _, err := store.Load()
+		if err != nil {
+			return err
+		}
+		if err := pool.JoinWorker(cfg, args[1], "work/rendered/workers/"+args[1]); err != nil {
+			return err
+		}
+		return store.SetNodeJoined(args[1], true)
 	default:
 		return fmt.Errorf("unknown node subcommand %q", args[0])
 	}

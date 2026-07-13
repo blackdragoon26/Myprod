@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -57,6 +58,99 @@ func (s Store) Load() (Config, State, error) {
 func (s Store) SaveState(state State) error {
 	state.ensure()
 	return os.WriteFile(filepath.Join(s.dir, "state.yaml"), []byte(formatState(state)), 0o600)
+}
+
+func (s Store) AddNode(node Node) error {
+	cfg, state, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if err := validateNewNode(cfg, node); err != nil {
+		return err
+	}
+	if node.Role == "" {
+		node.Role = "worker"
+	}
+	if node.Provider == "" {
+		node.Provider = "digitalocean"
+	}
+	if node.CostMode == "" {
+		node.CostMode = "credit_temporary"
+	}
+	if node.Placement == "" {
+		node.Placement = "burst"
+	}
+	if node.Guard.MaxDiskPercent == 0 {
+		node.Guard.MaxDiskPercent = 80
+	}
+	if node.Guard.MaxMemoryPercent == 0 {
+		node.Guard.MaxMemoryPercent = 85
+	}
+	if node.Guard.MaxLoad1 == 0 {
+		node.Guard.MaxLoad1 = 3.5
+	}
+
+	cfg.Nodes = append(cfg.Nodes, node)
+	state.ensure()
+	if _, ok := state.Nodes[node.Name]; !ok {
+		state.Nodes[node.Name] = NodeState{}
+	}
+	if err := os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o644); err != nil {
+		return err
+	}
+	return s.SaveState(state)
+}
+
+func (s Store) SetNodeJoined(name string, joined bool) error {
+	cfg, state, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if !cfg.HasNode(name) {
+		return fmt.Errorf("unknown node %q", name)
+	}
+	state.SetJoined(name, joined)
+	return s.SaveState(state)
+}
+
+func validateNewNode(cfg Config, node Node) error {
+	if node.Name == "" {
+		return errors.New("missing node name")
+	}
+	if !safeID(node.Name) {
+		return errors.New("node name may contain only letters, numbers, dash, and underscore")
+	}
+	if cfg.HasNode(node.Name) {
+		return fmt.Errorf("node %q already exists", node.Name)
+	}
+	if node.PublicIP == "" {
+		return errors.New("missing public IP")
+	}
+	if node.SSHUser == "" {
+		return errors.New("missing SSH user")
+	}
+	if node.SSHKey == "" {
+		return errors.New("missing SSH key path")
+	}
+	if node.OverlayIP == "" {
+		return errors.New("missing overlay IP")
+	}
+	for _, existing := range cfg.Nodes {
+		if existing.OverlayIP == node.OverlayIP {
+			return fmt.Errorf("overlay IP %q is already used by %s", node.OverlayIP, existing.Name)
+		}
+	}
+	return nil
+}
+
+func safeID(raw string) bool {
+	for _, r := range raw {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return raw != ""
 }
 
 func parseConfig(raw string) (Config, error) {
@@ -213,6 +307,9 @@ func parseState(raw string) State {
 			if strings.HasPrefix(trimmed, "draining:") {
 				node.Draining = value(trimmed) == "true"
 			}
+			if strings.HasPrefix(trimmed, "joined:") {
+				node.Joined = value(trimmed) == "true"
+			}
 			state.Nodes[current] = node
 		}
 		if section == "apps" {
@@ -232,16 +329,73 @@ func parseState(raw string) State {
 func formatState(state State) string {
 	var b strings.Builder
 	b.WriteString("nodes:\n")
-	for name, node := range state.Nodes {
+	for _, name := range sortedNodeStateNames(state) {
+		node := state.Nodes[name]
 		b.WriteString(fmt.Sprintf("  - name: %s\n", name))
 		b.WriteString(fmt.Sprintf("    frozen: %t\n", node.Frozen))
 		b.WriteString(fmt.Sprintf("    draining: %t\n", node.Draining))
+		b.WriteString(fmt.Sprintf("    joined: %t\n", node.Joined))
 	}
 	b.WriteString("apps:\n")
-	for name, app := range state.Apps {
+	for _, name := range sortedAppStateNames(state) {
+		app := state.Apps[name]
 		b.WriteString(fmt.Sprintf("  - name: %s\n", name))
 		b.WriteString(fmt.Sprintf("    node: %s\n", app.Node))
 		b.WriteString(fmt.Sprintf("    status: %s\n", app.Status))
+	}
+	return b.String()
+}
+
+func sortedNodeStateNames(state State) []string {
+	names := make([]string, 0, len(state.Nodes))
+	for name := range state.Nodes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func sortedAppStateNames(state State) []string {
+	names := make([]string, 0, len(state.Apps))
+	for name := range state.Apps {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func formatConfig(cfg Config) string {
+	var b strings.Builder
+	if cfg.Name == "" {
+		cfg.Name = "personal-compute-pool"
+	}
+	b.WriteString(fmt.Sprintf("name: %s\n\n", cfg.Name))
+	b.WriteString("nodes:\n")
+	for _, node := range cfg.Nodes {
+		b.WriteString(fmt.Sprintf("  - name: %s\n", node.Name))
+		b.WriteString(fmt.Sprintf("    role: %s\n", node.Role))
+		b.WriteString(fmt.Sprintf("    provider: %s\n", node.Provider))
+		b.WriteString(fmt.Sprintf("    cost_mode: %s\n", node.CostMode))
+		b.WriteString(fmt.Sprintf("    placement: %s\n", node.Placement))
+		b.WriteString(fmt.Sprintf("    public_ip: %s\n", node.PublicIP))
+		b.WriteString(fmt.Sprintf("    ssh_user: %s\n", node.SSHUser))
+		b.WriteString(fmt.Sprintf("    ssh_key: %s\n", node.SSHKey))
+		b.WriteString(fmt.Sprintf("    overlay_ip: %s\n", node.OverlayIP))
+		b.WriteString("    guard:\n")
+		b.WriteString(fmt.Sprintf("      enabled: %t\n", node.Guard.Enabled))
+		b.WriteString(fmt.Sprintf("      max_disk_percent: %d\n", node.Guard.MaxDiskPercent))
+		b.WriteString(fmt.Sprintf("      max_memory_percent: %d\n", node.Guard.MaxMemoryPercent))
+		b.WriteString(fmt.Sprintf("      max_load1: %.1f\n", node.Guard.MaxLoad1))
+	}
+	b.WriteString("\napps:\n")
+	for _, app := range cfg.Apps {
+		b.WriteString(fmt.Sprintf("  - name: %s\n", app.Name))
+		b.WriteString(fmt.Sprintf("    image: %s\n", app.Image))
+		b.WriteString(fmt.Sprintf("    domain: %s\n", app.Domain))
+		b.WriteString(fmt.Sprintf("    port: %d\n", app.Port))
+		b.WriteString("    placement:\n")
+		b.WriteString(fmt.Sprintf("      prefer_node: %s\n", app.PreferNode))
+		b.WriteString(fmt.Sprintf("      allow_workers: %t\n", app.AllowWorkers))
 	}
 	return b.String()
 }

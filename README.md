@@ -78,6 +78,7 @@ The dashboard reads `.poolctl/config.yaml` and `.poolctl/state.yaml`, runs HTTP/
 - control-plane status
 - app render/deploy
 - node freeze/unfreeze/drain
+- DigitalOcean/manual VPS node registration
 - guard check
 - bundle render
 
@@ -98,6 +99,8 @@ https://myprod-control.vercel.app/
 It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/smoke`, and can call the Oracle-local `poolctl agent` through `https://api.sankalpjha.dev/__poolctl` after unlocking with the agent token. The dashboard includes links to the repo, docs, and creator site.
 
 Deployment notes live in [docs/deployment.md](docs/deployment.md). Production should be Git-driven from `main` through Vercel Git Integration or the included GitHub Actions workflow.
+
+To add the first DigitalOcean credit-backed worker, follow [docs/digitalocean-worker.md](docs/digitalocean-worker.md). The web dashboard can register the SSH-ready VPS and run the worker join flow for Nomad/WireGuard.
 
 ## Roadmap
 

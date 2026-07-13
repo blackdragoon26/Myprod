@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
@@ -39,6 +40,7 @@ type viewData struct {
 	Nodes       []nodeView
 	Apps        []appView
 	Smokes      []smokeView
+	NextOverlay string
 	Output      string
 	Error       string
 	Authed      bool
@@ -56,6 +58,7 @@ type nodeView struct {
 	PublicIP  string
 	OverlayIP string
 	State     string
+	Joined    bool
 }
 
 type appView struct {
@@ -172,21 +175,78 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.FormValue("csrf") != csrf {
+		if wantsJSON(r) {
+			writeActionJSON(w, "", "invalid form token; refresh and try again")
+			return
+		}
 		s.renderDashboard(w, r, "", "invalid form token; refresh and try again", csrf)
+		return
+	}
+
+	if r.FormValue("action") == "node-add" {
+		node, err := nodeFromForm(r)
+		if err != nil {
+			if wantsJSON(r) {
+				writeActionJSON(w, "", err.Error())
+				return
+			}
+			s.renderDashboard(w, r, "", err.Error(), csrf)
+			return
+		}
+		if err := s.store.AddNode(node); err != nil {
+			if wantsJSON(r) {
+				writeActionJSON(w, "", err.Error())
+				return
+			}
+			s.renderDashboard(w, r, "", err.Error(), csrf)
+			return
+		}
+		output := fmt.Sprintf("registered node %s in .poolctl/config.yaml\n", node.Name)
+		if wantsJSON(r) {
+			writeActionJSON(w, output, "")
+			return
+		}
+		s.renderDashboard(w, r, output, "", csrf)
 		return
 	}
 
 	args, err := actionArgs(r)
 	if err != nil {
+		if wantsJSON(r) {
+			writeActionJSON(w, "", err.Error())
+			return
+		}
 		s.renderDashboard(w, r, "", err.Error(), csrf)
 		return
 	}
 	output, err := s.runCommand(r.Context(), args...)
 	if err != nil {
+		if wantsJSON(r) {
+			writeActionJSON(w, output, err.Error())
+			return
+		}
 		s.renderDashboard(w, r, output, err.Error(), csrf)
 		return
 	}
+	if wantsJSON(r) {
+		writeActionJSON(w, output, "")
+		return
+	}
 	s.renderDashboard(w, r, output, "", csrf)
+}
+
+type actionResponse struct {
+	Output string `json:"output"`
+	Error  string `json:"error"`
+}
+
+func wantsJSON(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "application/json")
+}
+
+func writeActionJSON(w http.ResponseWriter, output, errText string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(actionResponse{Output: output, Error: errText})
 }
 
 func actionArgs(r *http.Request) ([]string, error) {
@@ -210,7 +270,7 @@ func actionArgs(r *http.Request) ([]string, error) {
 			return nil, errors.New("missing app")
 		}
 		return []string{"app", "deploy", app}, nil
-	case "node-freeze", "node-unfreeze", "node-drain":
+	case "node-freeze", "node-unfreeze", "node-drain", "node-join":
 		node := strings.TrimSpace(r.FormValue("node"))
 		if node == "" {
 			return nil, errors.New("missing node")
@@ -233,6 +293,7 @@ func (s *server) renderDashboard(w http.ResponseWriter, r *http.Request, output,
 		Nodes:       nodeViews(cfg, state),
 		Apps:        appViews(cfg, state),
 		Smokes:      s.smokes(r.Context(), cfg),
+		NextOverlay: nextOverlayIP(cfg),
 		Output:      output,
 		Error:       errText,
 		Authed:      true,
@@ -256,10 +317,60 @@ func nodeViews(cfg pool.Config, state pool.State) []nodeView {
 		}
 		out = append(out, nodeView{
 			Name: node.Name, Role: node.Role, Provider: node.Provider,
-			PublicIP: node.PublicIP, OverlayIP: node.OverlayIP, State: label,
+			PublicIP: node.PublicIP, OverlayIP: node.OverlayIP, State: label, Joined: st.Joined,
 		})
 	}
 	return out
+}
+
+func nodeFromForm(r *http.Request) (pool.Node, error) {
+	node := pool.Node{
+		Name:      strings.TrimSpace(r.FormValue("name")),
+		Role:      "worker",
+		Provider:  strings.TrimSpace(r.FormValue("provider")),
+		CostMode:  strings.TrimSpace(r.FormValue("cost_mode")),
+		Placement: strings.TrimSpace(r.FormValue("placement")),
+		PublicIP:  strings.TrimSpace(r.FormValue("public_ip")),
+		SSHUser:   strings.TrimSpace(r.FormValue("ssh_user")),
+		SSHKey:    strings.TrimSpace(r.FormValue("ssh_key")),
+		OverlayIP: strings.TrimSpace(r.FormValue("overlay_ip")),
+		Guard: pool.Guard{
+			Enabled:          true,
+			MaxDiskPercent:   80,
+			MaxMemoryPercent: 85,
+			MaxLoad1:         3.5,
+		},
+	}
+	if node.Provider == "" {
+		node.Provider = "digitalocean"
+	}
+	if node.CostMode == "" {
+		node.CostMode = "credit_temporary"
+	}
+	if node.Placement == "" {
+		node.Placement = "burst"
+	}
+	if net.ParseIP(node.PublicIP) == nil {
+		return pool.Node{}, errors.New("public IP must be a valid IP address")
+	}
+	if net.ParseIP(node.OverlayIP) == nil {
+		return pool.Node{}, errors.New("overlay IP must be a valid IP address")
+	}
+	return node, nil
+}
+
+func nextOverlayIP(cfg pool.Config) string {
+	used := map[string]bool{}
+	for _, node := range cfg.Nodes {
+		used[node.OverlayIP] = true
+	}
+	for i := 2; i < 255; i++ {
+		candidate := fmt.Sprintf("10.44.0.%d", i)
+		if !used[candidate] {
+			return candidate
+		}
+	}
+	return "10.44.0.254"
 }
 
 func appViews(cfg pool.Config, state pool.State) []appView {
@@ -310,7 +421,7 @@ func (s *server) smoke(ctx context.Context, label, url string) smokeView {
 }
 
 func (s *server) runCommand(ctx context.Context, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, s.exe, args...)
 	cmd.Dir = s.cwd
@@ -438,13 +549,20 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
     button.danger { color:#ffb4ad; }
     button:hover { border-color:var(--accent); }
     input { width:100%; min-height:38px; border:1px solid var(--line); border-radius:6px; background:#0d1117; color:var(--text); padding:8px 10px; }
+    label { display:grid; gap:6px; color:var(--muted); font-size:12px; font-weight:600; text-transform:uppercase; }
     .actions { display:flex; flex-wrap:wrap; gap:8px; }
+    .node-form { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:12px; align-items:end; }
     pre { margin:0; white-space:pre-wrap; word-break:break-word; background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:12px; max-height:480px; overflow:auto; }
+    .output-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .output-head h2 { margin:0; }
     .notice { margin-bottom:14px; padding:10px 12px; border-radius:6px; border:1px solid var(--line); }
     .notice.err { border-color:rgba(248,81,73,.55); color:#ffb4ad; }
+    .notice.run { border-color:rgba(88,166,255,.55); color:#9ecbff; }
     .login { max-width:420px; margin:12vh auto; }
     .top-actions { display:flex; gap:8px; align-items:center; }
-    @media (max-width: 820px) { main { padding:16px; } .span-4,.span-6,.span-8,.span-12 { grid-column: span 12; } header { align-items:flex-start; flex-direction:column; } }
+    body.busy button { opacity:.65; }
+    body.busy button.active-action { opacity:1; border-color:var(--accent); }
+    @media (max-width: 820px) { main { padding:16px; } .span-4,.span-6,.span-8,.span-12 { grid-column: span 12; } header { align-items:flex-start; flex-direction:column; } .node-form { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
@@ -471,6 +589,8 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
       </div>
     </header>
     {{if .Error}}<div class="notice err">{{.Error}}</div>{{end}}
+    <div id="runNotice" class="notice run" hidden>Running action. Leave this tab open; command output will appear below when it finishes.</div>
+    <div id="asyncError" class="notice err" hidden></div>
     <div class="grid">
       <section class="span-8">
         <h2>Apps</h2>
@@ -508,6 +628,7 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
                 <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-freeze"><input type="hidden" name="node" value="{{.Name}}"><button>Freeze</button></form>
                 <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-unfreeze"><input type="hidden" name="node" value="{{.Name}}"><button>Unfreeze</button></form>
                 <form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-drain"><input type="hidden" name="node" value="{{.Name}}"><button class="danger">Drain</button></form>
+                {{if ne .Role "control-plane"}}{{if .Joined}}<button disabled>Joined</button>{{else}}<form method="post" action="/action" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="node-join"><input type="hidden" name="node" value="{{.Name}}"><button class="primary">Join</button></form>{{end}}{{end}}
               </td>
             </tr>
           {{end}}</tbody>
@@ -522,11 +643,116 @@ var dashboardTemplate = template.Must(template.New("dashboard").Funcs(template.F
         </div>
       </section>
       <section class="span-12">
-        <h2>Command Output</h2>
-        <pre>{{if .Output}}{{.Output}}{{else}}Run an action to see CLI output here.{{end}}</pre>
+        <h2>Add VPS Node</h2>
+        <form method="post" action="/action" class="node-form">
+          <input type="hidden" name="csrf" value="{{.CSRF}}">
+          <input type="hidden" name="action" value="node-add">
+          <label>Name<input name="name" placeholder="do-worker-1" autocomplete="off"></label>
+          <label>Provider<input name="provider" value="digitalocean" autocomplete="off"></label>
+          <label>Public IP<input name="public_ip" placeholder="203.0.113.10" autocomplete="off"></label>
+          <label>SSH User<input name="ssh_user" value="ubuntu" autocomplete="off"></label>
+          <label>SSH Key<input name="ssh_key" placeholder="~/.ssh/keys/digitalocean-worker.key" autocomplete="off"></label>
+          <label>Overlay IP<input name="overlay_ip" value="{{.NextOverlay}}" autocomplete="off"></label>
+          <input type="hidden" name="cost_mode" value="credit_temporary">
+          <input type="hidden" name="placement" value="burst">
+          <button class="primary" type="submit">Register Node</button>
+        </form>
+        <p class="muted">This records an SSH-ready VPS in poolctl. Use the Join action in the Nodes table to install WireGuard, Docker, and Nomad on a worker.</p>
+      </section>
+      <section class="span-12">
+        <div class="output-head">
+          <h2>Command Output</h2>
+          <button id="copyOutput" type="button">Copy Output</button>
+        </div>
+        <pre id="commandOutput">{{if .Output}}{{.Output}}{{else}}Run an action to see CLI output here.{{end}}</pre>
       </section>
     </div>
   </main>
+  <script>
+    const output = document.getElementById("commandOutput");
+    const runNotice = document.getElementById("runNotice");
+    const asyncError = document.getElementById("asyncError");
+    const copyButton = document.getElementById("copyOutput");
+    const idleText = "Run an action to see CLI output here.";
+
+    function setRunning(button) {
+      document.body.classList.add("busy");
+      runNotice.hidden = false;
+      asyncError.hidden = true;
+      asyncError.textContent = "";
+      output.textContent = "Running " + (button ? button.textContent.trim() : "action") + "...\n";
+      document.querySelectorAll("button").forEach((btn) => {
+        if (btn !== copyButton) btn.disabled = true;
+      });
+      if (button) button.classList.add("active-action");
+    }
+
+    function clearRunning(button) {
+      document.body.classList.remove("busy");
+      runNotice.hidden = true;
+      document.querySelectorAll("button").forEach((btn) => {
+        btn.disabled = false;
+        btn.classList.remove("active-action");
+      });
+    }
+
+    document.querySelectorAll('form[action="/action"]').forEach((form) => {
+      form.addEventListener("submit", async (event) => {
+        if (!window.fetch || !window.FormData) return;
+        event.preventDefault();
+        const button = event.submitter || form.querySelector("button");
+        setRunning(button);
+        try {
+          const response = await fetch("/action", {
+            method: "POST",
+            headers: { "Accept": "application/json", "X-Requested-With": "poolctl-web" },
+            body: new FormData(form)
+          });
+          const contentType = response.headers.get("content-type") || "";
+          let data;
+          if (contentType.includes("application/json")) {
+            data = await response.json();
+          } else {
+            const text = await response.text();
+            data = { output: text, error: response.ok ? "" : "server returned a non-JSON response" };
+          }
+          output.textContent = data.output || "";
+          if (!output.textContent) output.textContent = data.error ? "" : idleText;
+          if (data.error) {
+            asyncError.textContent = data.error;
+            asyncError.hidden = false;
+            if (!output.textContent) output.textContent = "Action failed before producing command output.";
+          } else if (form.querySelector('input[name="action"]')?.value === "node-add") {
+            window.location.href = "/";
+            return;
+          }
+        } catch (error) {
+          asyncError.textContent = error && error.message ? error.message : String(error);
+          asyncError.hidden = false;
+          output.textContent = "Action failed before producing command output.";
+        } finally {
+          clearRunning(button);
+        }
+      });
+    });
+
+    copyButton.addEventListener("click", async () => {
+      const text = output.textContent || "";
+      if (!text || text === idleText) return;
+      try {
+        await navigator.clipboard.writeText(text);
+        const previous = copyButton.textContent;
+        copyButton.textContent = "Copied";
+        setTimeout(() => { copyButton.textContent = previous; }, 1200);
+      } catch (_) {
+        const range = document.createRange();
+        range.selectNodeContents(output);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+    });
+  </script>
 {{end}}
 </body>
 </html>`))

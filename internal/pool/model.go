@@ -43,6 +43,7 @@ type State struct {
 type NodeState struct {
 	Frozen   bool
 	Draining bool
+	Joined   bool
 }
 
 type AppState struct {
@@ -95,6 +96,13 @@ func (s *State) SetDraining(name string, draining bool) {
 	if draining {
 		node.Frozen = true
 	}
+	s.Nodes[name] = node
+}
+
+func (s *State) SetJoined(name string, joined bool) {
+	s.ensure()
+	node := s.Nodes[name]
+	node.Joined = joined
 	s.Nodes[name] = node
 }
 
