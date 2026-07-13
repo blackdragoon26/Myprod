@@ -83,6 +83,7 @@
       transition: background-color .2s ease, color .2s ease;
     }
     h1, h2, h3, p { margin: 0; }
+    [hidden] { display: none !important; }
     h1 { font-size: 22px; font-weight: 600; letter-spacing: 0; }
     h2 { font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
     h3 { font-size: 14px; font-weight: 600; }
@@ -141,6 +142,10 @@
     }
     .header-title p { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
     .top-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
+    .auth-controls { display: flex; align-items: center; gap: 8px; }
+    .auth-result { min-width: 74px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+    .auth-result.ok { color: var(--ok); }
+    .auth-result.bad { color: var(--bad); }
 
     /* ---------- Inputs & buttons ---------- */
     input, button {
@@ -389,7 +394,9 @@
       .rail { padding: 6px; }
       header { gap: 10px; }
       .top-actions { display: grid; grid-template-columns: 1fr auto; }
-      .top-actions input { width: 100%; grid-column: 1 / -1; }
+      .auth-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-column: 1 / -1; }
+      .auth-controls input { width: 100%; }
+      .auth-result { grid-column: 1 / -1; }
       .summary-row, .status-grid { grid-template-columns: 1fr; }
       .card, .hero-main, .assistant-panel { padding: 14px; }
       .node-card { grid-template-columns: 1fr; }
@@ -431,8 +438,12 @@
             <p>Hosted control surface for Oracle, DigitalOcean, Nomad, and Traefik. <span id="last-updated">Awaiting live data</span></p>
           </div>
           <div class="top-actions">
-            <input id="token" type="password" placeholder="Agent token" autocomplete="off">
-            <button id="save-token" class="primary">Unlock</button>
+            <div class="auth-controls">
+              <input id="token" type="password" placeholder="Agent token" autocomplete="off" aria-describedby="auth-result">
+              <button id="save-token" class="primary">Unlock</button>
+              <button id="lock-agent" type="button" hidden>Lock</button>
+              <span id="auth-result" class="auth-result" role="status" aria-live="polite">Locked</span>
+            </div>
             <button id="refresh" title="Refresh health">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
               Refresh
@@ -599,6 +610,8 @@
     const refresh = document.getElementById("refresh");
     const tokenInput = document.getElementById("token");
     const saveToken = document.getElementById("save-token");
+    const lockAgent = document.getElementById("lock-agent");
+    const authResult = document.getElementById("auth-result");
     const output = document.getElementById("output");
     const copyOutput = document.getElementById("copy-output");
     const agentState = document.getElementById("agent-state");
@@ -625,6 +638,11 @@
 
     function agentToken() {
       return localStorage.getItem("poolctlAgentToken") || "";
+    }
+
+    function setAuthResult(message, tone = "") {
+      authResult.textContent = message;
+      authResult.className = `auth-result ${tone}`.trim();
     }
 
     function escapeHTML(value) {
@@ -683,6 +701,9 @@
 
     function setUnlocked(unlocked) {
       document.querySelectorAll("[data-action]").forEach((button) => { button.disabled = !unlocked || actionRunning; });
+      tokenInput.hidden = unlocked;
+      saveToken.hidden = unlocked;
+      lockAgent.hidden = !unlocked;
       agentState.textContent = unlocked ? "agent connected" : "agent locked";
       agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
       for (const id of ["deploy-capability", "node-capability", "status-capability"]) {
@@ -725,8 +746,8 @@
       }
     }
 
-    async function agentFetch(path, options = {}) {
-      const token = agentToken();
+    async function agentFetch(path, options = {}, tokenOverride = "") {
+      const token = tokenOverride || agentToken();
       if (!token) throw new Error("missing agent token");
       const res = await fetch(`${AGENT}${path}`, {
         ...options,
@@ -741,9 +762,15 @@
       try {
         data = JSON.parse(raw);
       } catch (_) {
-        throw new Error(raw.trim().slice(0, 240) || `agent returned ${res.status}`);
+        const error = new Error(raw.trim().slice(0, 240) || `agent returned ${res.status}`);
+        error.status = res.status;
+        throw error;
       }
-      if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
+      if (!res.ok || !data.ok) {
+        const error = new Error(data.error || res.statusText);
+        error.status = res.status;
+        throw error;
+      }
       return data;
     }
 
@@ -836,9 +863,16 @@
       try {
         const data = await agentFetch("/status");
         setUnlocked(true);
+        setAuthResult("Connected", "ok");
         renderAgent(data);
         if (!options.silent) output.textContent = JSON.stringify(data, null, 2);
       } catch (error) {
+        if (error.status === 401) {
+          localStorage.removeItem("poolctlAgentToken");
+          setAuthResult("Rejected", "bad");
+        } else {
+          setAuthResult("Unavailable", "bad");
+        }
         setUnlocked(false);
         if (!options.silent) output.textContent = `Agent auth/status failed: ${error.message}`;
       }
@@ -886,13 +920,42 @@
     async function unlockAgent() {
       const token = tokenInput.value.trim();
       if (!token) {
+        setAuthResult("Token required", "bad");
         output.textContent = "Enter the Oracle agent token before unlocking.";
         tokenInput.focus();
         return;
       }
-      localStorage.setItem("poolctlAgentToken", token);
+      saveToken.disabled = true;
+      saveToken.classList.add("is-loading");
+      setAuthResult("Connecting...");
+      try {
+        const data = await agentFetch("/status", {}, token);
+        localStorage.setItem("poolctlAgentToken", token);
+        tokenInput.value = "";
+        setUnlocked(true);
+        setAuthResult("Connected", "ok");
+        renderAgent(data);
+        output.textContent = "Agent unlocked successfully. Hosted operations are enabled for this browser.";
+      } catch (error) {
+        localStorage.removeItem("poolctlAgentToken");
+        setUnlocked(false);
+        setAuthResult(error.status === 401 ? "Rejected" : "Unavailable", "bad");
+        output.textContent = `Agent unlock failed: ${error.message}`;
+        tokenInput.focus();
+        tokenInput.select();
+      } finally {
+        saveToken.disabled = false;
+        saveToken.classList.remove("is-loading");
+      }
+    }
+
+    function lockAgentSession() {
+      localStorage.removeItem("poolctlAgentToken");
       tokenInput.value = "";
-      await refreshAgent();
+      setUnlocked(false);
+      setAuthResult("Locked");
+      output.textContent = "Agent locked. The saved token was removed from this browser.";
+      tokenInput.focus();
     }
 
     async function refreshAll() {
@@ -907,6 +970,7 @@
     }
 
     saveToken.addEventListener("click", unlockAgent);
+    lockAgent.addEventListener("click", lockAgentSession);
     tokenInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") unlockAgent();
     });
@@ -923,6 +987,7 @@
     });
 
     bindActionButtons();
+    if (agentToken()) setAuthResult("Checking...");
     refreshAll();
   </script>
 </body>
