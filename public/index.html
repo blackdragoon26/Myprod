@@ -971,7 +971,11 @@
         setUnlocked(true);
         setAuthResult("Connected", "ok");
         renderAgent(data);
-        if (!options.silent) output.textContent = JSON.stringify(data, null, 2);
+        if (!options.silent) {
+          output.textContent = JSON.stringify(data, null, 2);
+        } else if (output.textContent.startsWith("Agent is locked")) {
+          output.textContent = "Agent connected. Live pool state was restored from this browser's saved session.";
+        }
       } catch (error) {
         if (error.status === 401) {
           localStorage.removeItem("poolctlAgentToken");
