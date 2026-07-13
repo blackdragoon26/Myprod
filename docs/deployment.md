@@ -22,9 +22,11 @@ The desired production flow is:
 git push origin main -> GitHub -> Vercel production deploy
 ```
 
-There are two supported ways to make that true.
+Use Vercel Git Integration as the production deployment path. The old GitHub
+Actions fallback was removed because a missing `VERCEL_TOKEN` secret made every
+push show a failed deployment even when Vercel had already deployed from Git.
 
-## Preferred: Vercel Git Integration
+## Vercel Git Integration
 
 Use this when the Vercel dashboard can access the GitHub account:
 
@@ -39,27 +41,6 @@ Use this when the Vercel dashboard can access the GitHub account:
 
 The dashboard is a static `public/index.html` plus the serverless smoke endpoint at `api/smoke.js`.
 
-## Fallback: GitHub Actions
-
-The repo includes `.github/workflows/vercel-production.yml`, which deploys to Vercel on pushes to `main`.
-
-Add these GitHub repository secrets:
-
-```txt
-VERCEL_TOKEN
-VERCEL_ORG_ID
-VERCEL_PROJECT_ID
-```
-
-Current known project values:
-
-```txt
-VERCEL_ORG_ID=team_PcwkUVWQ8AC7CPb6vP0fC5nI
-VERCEL_PROJECT_ID=prj_DItWG40QOEJsCD6IQgLHxO9t1qRr
-```
-
-Do not commit `VERCEL_TOKEN`; create it in Vercel account settings and store it only as a GitHub Actions secret.
-
 ## Manual Deploy
 
-Manual deploys through the Codex Vercel connector are useful for quick iteration, but they are not the long-term source of truth. Production should be Git-driven so the deployed dashboard always matches `main`.
+Manual deploys are useful for quick iteration, but they are not the long-term source of truth. Production should be Git-driven so the deployed dashboard always matches `main`.

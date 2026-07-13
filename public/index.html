@@ -6,269 +6,384 @@
   <title>Myprod Control</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0b0f14;
-      --panel: #121821;
-      --panel-2: #0f141c;
-      --line: #263241;
-      --text: #e9eef5;
-      --muted: #93a1b2;
-      --ok: #31c48d;
-      --warn: #f4b740;
-      --bad: #f97066;
-      --accent: #5aa7ff;
-      --accent-2: #38d9a9;
+      color-scheme: light;
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --surface-soft: #f8f9fb;
+      --line: #e3e6eb;
+      --line-strong: #d3d8e0;
+      --text: #181b23;
+      --muted: #747b88;
+      --ok: #1f9d68;
+      --warn: #ba7a00;
+      --bad: #d4473f;
+      --accent: #e6654e;
+      --accent-ink: #ffffff;
+      --ink: #070719;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
+      min-width: 320px;
       background: var(--bg);
       color: var(--text);
-      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
-    main { max-width: 1180px; margin: 0 auto; padding: 28px; }
-    header { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
-    h1 { margin: 0; font-size: 28px; line-height: 1.1; }
-    h2 { margin: 0 0 14px; font-size: 17px; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    button {
-      min-height: 34px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #1b2430;
-      color: var(--text);
-      padding: 6px 10px;
-      cursor: pointer;
-      font: inherit;
-    }
-    button:hover { border-color: var(--accent); }
-    button:disabled { color: var(--muted); cursor: not-allowed; opacity: .7; }
-    button.primary { background: #17314f; border-color: rgba(90, 167, 255, .5); }
-    button.danger { background: #35191d; border-color: rgba(249, 112, 102, .48); }
-    input {
-      min-height: 34px;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: #0f141c;
-      color: var(--text);
-      padding: 6px 10px;
-      font: inherit;
-    }
-    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 14px; }
-    section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; }
-    .hero {
-      grid-column: span 12;
+    main { max-width: 1220px; margin: 0 auto; padding: 28px; }
+    header {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) minmax(280px, .8fr);
+      grid-template-columns: minmax(0, 1fr) auto;
       gap: 18px;
-      align-items: stretch;
-      background: linear-gradient(135deg, #111c28 0%, #101722 48%, #11231f 100%);
+      align-items: center;
+      margin-bottom: 20px;
     }
-    .hero h2 { font-size: 26px; margin: 0 0 8px; }
-    .hero-copy { max-width: 680px; }
-    .topology {
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 24px; line-height: 1.1; letter-spacing: 0; }
+    h2 { font-size: 16px; line-height: 1.2; letter-spacing: 0; }
+    h3 { font-size: 14px; letter-spacing: 0; }
+    a { color: inherit; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button, input {
+      min-height: 38px;
+      border-radius: 8px;
+      font: inherit;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    button:hover { border-color: var(--line-strong); }
+    button:disabled { cursor: not-allowed; opacity: .55; }
+    button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+    button.accent { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+    button.danger { color: var(--bad); }
+    input {
+      width: min(260px, 100%);
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+      padding: 8px 12px;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 800; }
+    tr:last-child td { border-bottom: 0; }
+    pre {
+      margin: 0;
+      min-height: 168px;
+      max-height: 360px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #242936;
+    }
+    .muted { color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .top-actions, .actions, .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .shell {
       display: grid;
-      gap: 8px;
-      align-content: center;
-      min-height: 150px;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 18px;
     }
-    .topology-row { display: grid; grid-template-columns: 1fr 34px 1fr 34px 1fr; gap: 8px; align-items: center; }
-    .topology-box { border: 1px solid var(--line); background: rgba(15, 20, 28, .82); border-radius: 6px; padding: 10px; min-height: 58px; }
-    .arrow { color: var(--accent-2); text-align: center; font-weight: 800; }
+    .rail {
+      position: sticky;
+      top: 28px;
+      height: calc(100vh - 56px);
+      display: grid;
+      align-content: start;
+      gap: 10px;
+    }
+    .rail-button {
+      width: 48px;
+      height: 48px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--muted);
+      font-weight: 900;
+    }
+    .rail-button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .content { display: grid; gap: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      min-width: 0;
+    }
+    .soft { background: var(--surface-soft); }
     .span-3 { grid-column: span 3; }
     .span-4 { grid-column: span 4; }
     .span-5 { grid-column: span 5; }
     .span-7 { grid-column: span 7; }
     .span-8 { grid-column: span 8; }
     .span-12 { grid-column: span 12; }
-    .muted { color: var(--muted); }
-    .metric { font-size: 24px; font-weight: 700; margin-top: 8px; }
-    .submetric { color: var(--muted); font-size: 12px; margin-top: 4px; }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, .95fr) minmax(360px, 1.05fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+    .hero-main {
+      min-height: 230px;
+      display: grid;
+      align-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 28px;
+    }
+    .hero-title { font-size: 36px; line-height: 1.05; letter-spacing: 0; max-width: 560px; }
+    .hero-subtitle { margin-top: 12px; max-width: 560px; color: var(--muted); font-size: 15px; }
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .summary-tile {
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 72px;
+    }
+    .summary-tile strong { display: block; margin-top: 4px; font-size: 20px; }
+    .assistant-panel {
+      min-height: 230px;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+    .assistant-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .ask {
+      align-self: center;
+      display: grid;
+      grid-template-columns: 1fr 56px;
+      gap: 12px;
+      align-items: center;
+    }
+    .ask-title { font-size: 24px; line-height: 1.1; }
+    .mic {
+      width: 56px;
+      height: 56px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      color: var(--accent);
+      font-weight: 900;
+    }
     .pill {
       display: inline-flex;
       align-items: center;
-      min-height: 24px;
-      padding: 2px 8px;
+      min-height: 26px;
+      padding: 3px 9px;
       border: 1px solid var(--line);
       border-radius: 999px;
       color: var(--muted);
+      background: var(--surface);
       white-space: nowrap;
+      font-weight: 700;
+      font-size: 12px;
     }
-    .pill.ok { color: var(--ok); border-color: rgba(49, 196, 141, .42); }
-    .pill.warn { color: var(--warn); border-color: rgba(244, 183, 64, .42); }
-    .pill.bad { color: var(--bad); border-color: rgba(249, 112, 102, .42); }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-    th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .02em; }
-    tr:last-child td { border-bottom: 0; }
-    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
-    .callout { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
-    .stack { display: grid; gap: 12px; }
-    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .pill.ok { color: var(--ok); border-color: rgba(31, 157, 104, .32); background: #effaf5; }
+    .pill.warn { color: var(--warn); border-color: rgba(186, 122, 0, .32); background: #fff8ea; }
+    .pill.bad { color: var(--bad); border-color: rgba(212, 71, 63, .32); background: #fff1f0; }
     .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-    .status-tile { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-height: 78px; }
-    .status-tile strong { display: block; margin-top: 4px; font-size: 18px; }
-    .link-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; }
-    @media (max-width: 860px) {
-      main { padding: 16px; }
-      header { align-items: flex-start; flex-direction: column; }
+    .status-tile {
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 92px;
+    }
+    .status-tile strong { display: block; margin-top: 10px; font-size: 22px; }
+    .node-cards { display: grid; gap: 10px; }
+    .node-card {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      background: var(--surface-soft);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .node-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .node-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+    .output-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .mini-chart {
+      height: 116px;
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 6px;
+      align-items: end;
+      margin-top: 18px;
+    }
+    .bar { border-radius: 8px 8px 2px 2px; background: #f2b4a7; min-height: 14px; }
+    .bar.hot { background: var(--accent); }
+    .empty { padding: 18px; color: var(--muted); text-align: center; }
+    @media (max-width: 980px) {
+      main { padding: 18px; }
+      .shell { grid-template-columns: 1fr; }
+      .rail { position: static; height: auto; display: flex; }
+      header, .hero { grid-template-columns: 1fr; }
       .span-3, .span-4, .span-5, .span-7, .span-8, .span-12 { grid-column: span 12; }
-      .hero { grid-template-columns: 1fr; }
-      .split, .status-grid, .topology-row { grid-template-columns: 1fr; }
-      .arrow { display: none; }
+      .summary-row, .status-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <main>
-    <header>
-      <div>
-        <h1>Myprod Control</h1>
-        <div class="muted">Vercel-hosted view for the Oracle pool &middot; powered by poolctl</div>
+    <div class="shell">
+      <nav class="rail" aria-label="Dashboard sections">
+        <a class="rail-button active" href="#overview" title="Overview">P</a>
+        <a class="rail-button" href="#nodes" title="Nodes">N</a>
+        <a class="rail-button" href="#apps" title="Apps">A</a>
+        <a class="rail-button" href="#actions" title="Actions">O</a>
+      </nav>
+
+      <div class="content">
+        <header>
+          <div>
+            <h1>Myprod Control</h1>
+            <p class="muted">Hosted control surface for Oracle, DigitalOcean, Nomad, and Traefik.</p>
+          </div>
+          <div class="top-actions">
+            <input id="token" type="password" placeholder="Agent token" autocomplete="off">
+            <button id="save-token" class="primary">Unlock</button>
+            <button id="refresh">Refresh Health</button>
+            <a class="pill" href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">Open API</a>
+          </div>
+        </header>
+
+        <section id="overview" class="hero">
+          <div class="hero-main">
+            <div>
+              <div id="agent-state" class="pill warn">agent locked</div>
+              <h2 class="hero-title">Personal compute pool</h2>
+              <p class="hero-subtitle">Run backend services across the Oracle control plane and temporary worker VPS capacity without leaving the hosted dashboard.</p>
+            </div>
+            <div class="summary-row">
+              <div class="summary-tile"><span class="muted">Public API</span><strong id="overall">checking</strong></div>
+              <div class="summary-tile"><span class="muted">Control</span><strong>Oracle</strong></div>
+              <div class="summary-tile"><span class="muted">Worker</span><strong>DigitalOcean</strong></div>
+            </div>
+          </div>
+
+          <div class="assistant-panel">
+            <div class="assistant-head">
+              <div>
+                <strong>Operator console</strong>
+                <p class="muted">Token stays in this browser.</p>
+              </div>
+              <span id="status-capability" class="pill warn">locked</span>
+            </div>
+            <div class="ask">
+              <div>
+                <div class="ask-title">Need pool state?</div>
+                <p class="muted">Unlock and refresh to load live nodes, apps, system status, and actions.</p>
+              </div>
+              <div class="mic">⌁</div>
+            </div>
+            <div class="actions">
+              <button class="accent" data-action="control-status" disabled>Control status</button>
+              <button data-action="app-deploy" data-name="sample-api" disabled>Deploy sample-api</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="grid">
+          <section class="span-4 card">
+            <h2>System Status</h2>
+            <div class="status-grid" style="margin-top: 14px;">
+              <div class="status-tile"><span class="muted">Nomad</span><strong id="nomad-state">locked</strong></div>
+              <div class="status-tile"><span class="muted">Traefik</span><strong id="traefik-state">locked</strong></div>
+              <div class="status-tile"><span class="muted">WireGuard</span><strong id="wireguard-state">locked</strong></div>
+            </div>
+          </section>
+
+          <section class="span-4 card">
+            <h2>Endpoint Health</h2>
+            <table style="margin-top: 12px;">
+              <thead><tr><th>Route</th><th>Status</th><th>Latency</th></tr></thead>
+              <tbody id="health">
+                <tr><td colspan="3" class="muted">Checking Oracle ingress...</td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="span-4 card">
+            <h2>Traffic Shape</h2>
+            <p class="muted">Smoke latency snapshot</p>
+            <div class="mini-chart" aria-hidden="true">
+              <div class="bar" style="height:32%"></div>
+              <div class="bar" style="height:44%"></div>
+              <div class="bar hot" style="height:68%"></div>
+              <div class="bar" style="height:38%"></div>
+              <div class="bar" style="height:50%"></div>
+              <div class="bar hot" style="height:84%"></div>
+              <div class="bar" style="height:58%"></div>
+              <div class="bar" style="height:46%"></div>
+              <div class="bar" style="height:62%"></div>
+              <div class="bar hot" style="height:78%"></div>
+              <div class="bar" style="height:54%"></div>
+              <div class="bar" style="height:42%"></div>
+            </div>
+          </section>
+
+          <section id="apps" class="span-7 card">
+            <div class="toolbar">
+              <h2>Managed Apps</h2>
+              <span id="deploy-capability" class="pill warn">locked</span>
+            </div>
+            <table style="margin-top: 12px;">
+              <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Status</th></tr></thead>
+              <tbody id="apps-body">
+                <tr><td>sample-api</td><td class="mono">traefik/whoami:v1.11.0</td><td>api.sankalpjha.dev</td><td>oracle-main</td><td><span class="pill warn">unlock</span></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section id="nodes" class="span-5 card">
+            <div class="toolbar">
+              <h2>Nodes</h2>
+              <span id="node-capability" class="pill warn">locked</span>
+            </div>
+            <div id="node-list" class="node-cards" style="margin-top: 12px;">
+              <div class="empty">Unlock to load live nodes.</div>
+            </div>
+          </section>
+
+          <section id="actions" class="span-5 card">
+            <h2>Node Actions</h2>
+            <div id="node-actions" class="node-cards" style="margin-top: 12px;">
+              <div class="empty">Unlock to load node controls.</div>
+            </div>
+          </section>
+
+          <section class="span-7 card">
+            <div class="output-head">
+              <h2>Agent Output</h2>
+              <button id="copy-output">Copy</button>
+            </div>
+            <pre id="output">Agent is locked. Enter the Oracle agent token to enable hosted operations.</pre>
+          </section>
+        </div>
       </div>
-      <div class="actions">
-        <input id="token" type="password" placeholder="Agent token">
-        <button id="save-token">Unlock</button>
-        <button id="refresh">Refresh Health</button>
-        <a class="pill" href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">Open API</a>
-      </div>
-    </header>
-
-    <div class="grid">
-      <section class="hero">
-        <div class="hero-copy">
-          <h2>Personal Compute Pool</h2>
-          <div class="muted">One hosted dashboard for the Oracle control plane, DigitalOcean worker nodes, Nomad apps, and Traefik ingress.</div>
-          <div class="actions" style="margin-top: 16px;">
-            <span id="agent-state" class="pill warn">agent locked</span>
-            <span class="pill ok">portfolio domain safe</span>
-            <span class="pill">Netlify DNS subdomain</span>
-          </div>
-          <div class="link-list">
-            <a class="pill" href="https://github.com/blackdragoon26/Myprod" target="_blank" rel="noreferrer">GitHub repo</a>
-            <a class="pill" href="https://github.com/blackdragoon26/Myprod/tree/main/docs" target="_blank" rel="noreferrer">Docs</a>
-            <a class="pill" href="https://sankalpjha.dev/" target="_blank" rel="noreferrer">Creator</a>
-          </div>
-        </div>
-        <div class="topology">
-          <div class="topology-row">
-            <div class="topology-box"><strong>Browser</strong><div class="submetric">Vercel dashboard</div></div>
-            <div class="arrow">&rarr;</div>
-            <div class="topology-box"><strong>api.sankalpjha.dev</strong><div class="submetric">Traefik route</div></div>
-            <div class="arrow">&rarr;</div>
-            <div class="topology-box"><strong>poolctl agent</strong><div class="submetric">localhost on Oracle</div></div>
-          </div>
-        </div>
-      </section>
-
-      <section class="span-3">
-        <div class="muted">Control Plane</div>
-        <div class="metric">Oracle ARM</div>
-        <div class="muted">140.245.5.201</div>
-      </section>
-      <section class="span-3">
-        <div class="muted">Ingress</div>
-        <div class="metric">Traefik</div>
-        <div class="muted">HTTP + HTTPS</div>
-      </section>
-      <section class="span-3">
-        <div class="muted">Scheduler</div>
-        <div class="metric">Nomad</div>
-        <div class="muted">single control node</div>
-      </section>
-      <section class="span-3">
-        <div class="muted">Public API</div>
-        <div id="overall" class="metric">checking</div>
-        <div class="muted">api.sankalpjha.dev</div>
-      </section>
-
-      <section class="span-7">
-        <h2>Live Endpoint Health</h2>
-        <table>
-          <thead><tr><th>Route</th><th>Status</th><th>Latency</th><th>Certificate</th></tr></thead>
-          <tbody id="health">
-            <tr><td colspan="4" class="muted">Checking Oracle ingress...</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section class="span-5">
-        <h2>Agent System Status</h2>
-        <div class="status-grid">
-          <div class="status-tile"><span class="muted">Nomad</span><strong id="nomad-state">locked</strong></div>
-          <div class="status-tile"><span class="muted">Traefik</span><strong id="traefik-state">locked</strong></div>
-          <div class="status-tile"><span class="muted">WireGuard</span><strong id="wireguard-state">locked</strong></div>
-        </div>
-      </section>
-
-      <section class="span-7">
-        <h2>Managed Apps</h2>
-        <table>
-          <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Status</th></tr></thead>
-          <tbody id="apps">
-            <tr><td>sample-api</td><td class="mono">traefik/whoami:v1.11.0</td><td><a href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">api.sankalpjha.dev</a></td><td>oracle-main</td><td><span class="pill warn">unlock for live</span></td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section class="span-5">
-        <h2>Managed Nodes</h2>
-        <table>
-          <thead><tr><th>Name</th><th>Provider</th><th>IP</th><th>State</th></tr></thead>
-          <tbody id="nodes">
-            <tr><td>oracle-main</td><td>oracle</td><td>140.245.5.201</td><td><span class="pill warn">unlock for live</span></td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section class="span-8">
-        <h2>CLI Capability Map</h2>
-        <table>
-          <thead><tr><th>Capability</th><th>Local poolctl web</th><th>Vercel deployment</th></tr></thead>
-          <tbody>
-            <tr><td>View app/node config</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
-            <tr><td>HTTP/HTTPS smoke checks</td><td><span class="pill ok">working</span></td><td><span class="pill ok">working</span></td></tr>
-            <tr><td>Deploy app</td><td><span class="pill ok">available through poolctl</span></td><td><span id="deploy-capability" class="pill warn">locked until agent token</span></td></tr>
-            <tr><td>Freeze / unfreeze / drain node</td><td><span class="pill ok">available through poolctl</span></td><td><span id="node-capability" class="pill warn">locked until agent token</span></td></tr>
-            <tr><td>Control-plane status</td><td><span class="pill ok">available through poolctl</span></td><td><span id="status-capability" class="pill warn">locked until agent token</span></td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section class="span-4">
-        <h2>Project Links</h2>
-        <div class="callout stack">
-          <a href="https://github.com/blackdragoon26/Myprod" target="_blank" rel="noreferrer">Repository: blackdragoon26/Myprod</a>
-          <a href="https://github.com/blackdragoon26/Myprod/blob/main/README.md" target="_blank" rel="noreferrer">README</a>
-          <a href="https://github.com/blackdragoon26/Myprod/blob/main/docs/deployment.md" target="_blank" rel="noreferrer">Deployment docs</a>
-          <a href="https://sankalpjha.dev/" target="_blank" rel="noreferrer">Creator: Sankalp Jha</a>
-        </div>
-      </section>
-
-      <section class="span-4">
-        <h2>Operator Actions</h2>
-        <div class="callout stack">
-          <div class="muted">Enter the Oracle agent token to enable live pool operations from Vercel. The token stays in this browser.</div>
-          <div class="muted">Deploy sample-api redeploys the existing whoami service, so the page at api.sankalpjha.dev should stay the same when it succeeds.</div>
-          <div class="actions" id="global-actions">
-            <button class="primary" data-action="control-status" disabled>Control status</button>
-            <button class="primary" data-action="app-deploy" data-name="sample-api" disabled>Deploy sample-api</button>
-          </div>
-          <div class="stack" id="node-actions">
-            <div class="muted">Unlock to load node actions.</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="span-12">
-        <h2>Agent Output</h2>
-        <div class="callout">
-          <pre id="output">Agent is locked. Enter token after the Oracle agent is installed.</pre>
-        </div>
-      </section>
     </div>
   </main>
 
@@ -279,47 +394,40 @@
     const tokenInput = document.getElementById("token");
     const saveToken = document.getElementById("save-token");
     const output = document.getElementById("output");
+    const copyOutput = document.getElementById("copy-output");
     const agentState = document.getElementById("agent-state");
-    const apps = document.getElementById("apps");
-    const nodes = document.getElementById("nodes");
+    const appsBody = document.getElementById("apps-body");
+    const nodeList = document.getElementById("node-list");
     const nodeActions = document.getElementById("node-actions");
     const nomadState = document.getElementById("nomad-state");
     const traefikState = document.getElementById("traefik-state");
     const wireguardState = document.getElementById("wireguard-state");
     const AGENT = "https://api.sankalpjha.dev/__poolctl/api";
 
-    function pill(status, ok) {
-      return `<span class="pill ${ok ? "ok" : "bad"}">${status}</span>`;
-    }
-
-    async function loadHealth() {
-      refresh.disabled = true;
-      health.innerHTML = `<tr><td colspan="4" class="muted">Checking Oracle ingress...</td></tr>`;
-      overall.textContent = "checking";
-      try {
-        const res = await fetch("/api/smoke", { cache: "no-store" });
-        const data = await res.json();
-        overall.textContent = data.ok ? "healthy" : "degraded";
-        overall.style.color = data.ok ? "var(--ok)" : "var(--bad)";
-        health.innerHTML = data.checks.map((check) => `
-          <tr>
-            <td><a href="${check.url}" target="_blank" rel="noreferrer">${check.label}</a></td>
-            <td>${pill(check.status, check.ok)}</td>
-            <td>${check.latencyMs} ms</td>
-            <td>${check.tls || "n/a"}</td>
-          </tr>
-        `).join("");
-      } catch (error) {
-        overall.textContent = "error";
-        overall.style.color = "var(--bad)";
-        health.innerHTML = `<tr><td colspan="4">${pill(error.message, false)}</td></tr>`;
-      } finally {
-        refresh.disabled = false;
-      }
-    }
-
     function agentToken() {
       return localStorage.getItem("poolctlAgentToken") || "";
+    }
+
+    function escapeHTML(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      })[char]);
+    }
+
+    function pill(status, tone) {
+      return `<span class="pill ${tone || ""}">${escapeHTML(status)}</span>`;
+    }
+
+    function statePill(value) {
+      const text = value || "unknown";
+      const normalized = String(text).toLowerCase();
+      const ok = ["active", "deployed", "ready", "joined", "200 ok", "healthy"].includes(normalized);
+      const warn = ["locked", "frozen", "draining", "unknown", "configured"].includes(normalized);
+      return pill(text, ok ? "ok" : warn ? "warn" : "bad");
     }
 
     function setUnlocked(unlocked) {
@@ -330,38 +438,72 @@
       agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
       for (const id of ["deploy-capability", "node-capability", "status-capability"]) {
         const el = document.getElementById(id);
-        el.textContent = unlocked ? "agent enabled" : "locked until agent token";
+        el.textContent = unlocked ? "agent enabled" : "locked";
         el.className = `pill ${unlocked ? "ok" : "warn"}`;
       }
     }
 
-    function statePill(value) {
-      const text = value || "unknown";
-      const ok = ["active", "deployed", "ready", "joined"].includes(String(text).toLowerCase());
-      const warn = ["locked", "frozen", "draining", "unknown"].includes(String(text).toLowerCase());
-      return `<span class="pill ${ok ? "ok" : warn ? "warn" : "bad"}">${text}</span>`;
+    async function loadHealth() {
+      refresh.disabled = true;
+      health.innerHTML = `<tr><td colspan="3" class="muted">Checking Oracle ingress...</td></tr>`;
+      overall.textContent = "checking";
+      try {
+        const res = await fetch("/api/smoke", { cache: "no-store" });
+        const data = await res.json();
+        overall.textContent = data.ok ? "healthy" : "degraded";
+        overall.style.color = data.ok ? "var(--ok)" : "var(--bad)";
+        health.innerHTML = data.checks.map((check) => `
+          <tr>
+            <td><a href="${escapeHTML(check.url)}" target="_blank" rel="noreferrer">${escapeHTML(check.label)}</a></td>
+            <td>${pill(check.status, check.ok ? "ok" : "bad")}</td>
+            <td>${escapeHTML(check.latencyMs)} ms</td>
+          </tr>
+        `).join("");
+      } catch (error) {
+        overall.textContent = "error";
+        overall.style.color = "var(--bad)";
+        health.innerHTML = `<tr><td colspan="3">${pill(error.message, "bad")}</td></tr>`;
+      } finally {
+        refresh.disabled = false;
+      }
     }
 
-    function actionLabel(action) {
+    async function agentFetch(path, options = {}) {
+      const token = agentToken();
+      if (!token) throw new Error("missing agent token");
+      const res = await fetch(`${AGENT}${path}`, {
+        ...options,
+        headers: {
+          "content-type": "application/json",
+          "authorization": `Bearer ${token}`,
+          ...(options.headers || {})
+        }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
+      return data;
+    }
+
+    function actionLabel(action, name = "") {
       if (action.startsWith("node-")) {
         const verb = action.replace("node-", "").replace("-", " ");
         return `${verb[0].toUpperCase()}${verb.slice(1)} ${name || "node"}`;
       }
       return {
         "control-status": "Control status",
-        "app-deploy": "Deploy sample-api",
+        "app-deploy": "Deploy sample-api"
       }[action] || action;
     }
 
-    function actionMessage(action, data) {
+    function actionMessage(action, name, data) {
       const raw = (data.output || "").trim();
       if (action === "app-deploy") {
-        return `Deploy sample-api completed.\n\nNomad accepted the job. Since sample-api was already deployed, api.sankalpjha.dev is expected to look unchanged.\n\n${raw || "No command output returned."}`;
+        return `Deploy sample-api completed.\n\nNomad accepted the job. api.sankalpjha.dev should remain available.\n\n${raw || "No command output returned."}`;
       }
       if (action === "control-status") {
         return `Control-plane services:\n${raw || "No command output returned."}`;
       }
-      return `${actionLabel(action)} completed.\n\n${raw || "State updated."}`;
+      return `${actionLabel(action, name)} completed.\n\n${raw || "State updated."}`;
     }
 
     function renderAgent(data) {
@@ -373,48 +515,51 @@
       wireguardState.innerHTML = statePill(system.wireguard || system.WireGuard);
 
       const appState = state.Apps || {};
-      apps.innerHTML = (config.Apps || []).map((app) => {
+      const configuredApps = config.Apps || [];
+      appsBody.innerHTML = configuredApps.map((app) => {
         const live = appState[app.Name] || {};
-        const domain = app.Domain ? `<a href="https://${app.Domain}/" target="_blank" rel="noreferrer">${app.Domain}</a>` : "";
-        return `<tr><td>${app.Name}</td><td class="mono">${app.Image}</td><td>${domain}</td><td>${live.Node || app.PreferNode || "auto"}</td><td>${statePill(live.Status || "configured")}</td></tr>`;
+        const domain = app.Domain ? `<a href="https://${escapeHTML(app.Domain)}/" target="_blank" rel="noreferrer">${escapeHTML(app.Domain)}</a>` : "";
+        return `<tr>
+          <td><strong>${escapeHTML(app.Name)}</strong></td>
+          <td class="mono">${escapeHTML(app.Image)}</td>
+          <td>${domain}</td>
+          <td>${escapeHTML(live.Node || app.PreferNode || "auto")}</td>
+          <td>${statePill(live.Status || "configured")}</td>
+        </tr>`;
       }).join("") || `<tr><td colspan="5" class="muted">No apps configured.</td></tr>`;
 
       const nodeState = state.Nodes || {};
       const configuredNodes = config.Nodes || [];
-      nodes.innerHTML = configuredNodes.map((node) => {
+      nodeList.innerHTML = configuredNodes.map((node) => {
         const live = nodeState[node.Name] || {};
         const stateText = live.Draining ? "draining" : live.Frozen ? "frozen" : live.Joined ? "joined" : "ready";
-        return `<tr><td>${node.Name}</td><td>${node.Provider}</td><td>${node.PublicIP}</td><td>${statePill(stateText)}</td></tr>`;
-      }).join("") || `<tr><td colspan="4" class="muted">No nodes configured.</td></tr>`;
+        return `<div class="node-card">
+          <div>
+            <h3>${escapeHTML(node.Name)}</h3>
+            <div class="node-meta">
+              ${pill(node.Provider || "provider")}
+              ${pill(node.PublicIP || "no public IP")}
+              ${pill(node.OverlayIP || "no overlay IP")}
+            </div>
+          </div>
+          <div>${statePill(stateText)}</div>
+        </div>`;
+      }).join("") || `<div class="empty">No nodes configured.</div>`;
 
       nodeActions.innerHTML = configuredNodes.map((node) => `
-        <div class="callout">
-          <strong>${node.Name}</strong>
-          <div class="muted">${node.Provider || "provider"} · ${node.PublicIP || "no public IP"} · ${node.OverlayIP || "no overlay IP"}</div>
-          <div class="actions" style="margin-top: 10px;">
-            <button data-action="node-freeze" data-name="${node.Name}">Freeze</button>
-            <button data-action="node-unfreeze" data-name="${node.Name}">Unfreeze</button>
-            <button class="danger" data-action="node-drain" data-name="${node.Name}">Drain</button>
+        <div class="node-card">
+          <div>
+            <h3>${escapeHTML(node.Name)}</h3>
+            <p class="muted">${escapeHTML(node.Provider || "provider")} · ${escapeHTML(node.PublicIP || "no public IP")}</p>
+          </div>
+          <div class="node-actions">
+            <button data-action="node-freeze" data-name="${escapeHTML(node.Name)}">Freeze</button>
+            <button data-action="node-unfreeze" data-name="${escapeHTML(node.Name)}">Unfreeze</button>
+            <button class="danger" data-action="node-drain" data-name="${escapeHTML(node.Name)}">Drain</button>
           </div>
         </div>
-      `).join("") || `<div class="muted">No nodes configured.</div>`;
+      `).join("") || `<div class="empty">No nodes configured.</div>`;
       bindActionButtons();
-    }
-
-    async function agentFetch(path, options = {}) {
-      const token = agentToken();
-      if (!token) throw new Error("missing agent token");
-      const res = await fetch(`${AGENT}${path}`, {
-        ...options,
-        headers: {
-          "content-type": "application/json",
-          "authorization": `Bearer ${token}`,
-          ...(options.headers || {}),
-        },
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
-      return data;
     }
 
     async function refreshAgent(options = {}) {
@@ -426,30 +571,27 @@
         const data = await agentFetch("/status");
         setUnlocked(true);
         renderAgent(data);
-        if (!options.silent) {
-          output.textContent = JSON.stringify(data, null, 2);
-        }
+        if (!options.silent) output.textContent = JSON.stringify(data, null, 2);
       } catch (error) {
         setUnlocked(false);
         nomadState.textContent = "locked";
         traefikState.textContent = "locked";
         wireguardState.textContent = "locked";
-        if (!options.silent) {
-          output.textContent = `Agent auth/status failed: ${error.message}`;
-        }
+        if (!options.silent) output.textContent = `Agent auth/status failed: ${error.message}`;
       }
     }
 
     async function runAction(button) {
-      button.disabled = true;
       const action = button.dataset.action;
-      output.textContent = `Running ${actionLabel(action, button.dataset.name || "")}...`;
+      const name = button.dataset.name || "";
+      button.disabled = true;
+      output.textContent = `Running ${actionLabel(action, name)}...`;
       try {
         const data = await agentFetch("/action", {
           method: "POST",
-          body: JSON.stringify({ action, name: button.dataset.name || "" }),
+          body: JSON.stringify({ action, name })
         });
-        output.textContent = actionMessage(action, data);
+        output.textContent = actionMessage(action, name, data);
         await refreshAgent({ silent: true });
       } catch (error) {
         output.textContent = `Action failed: ${error.message}`;
@@ -458,11 +600,6 @@
       }
     }
 
-    saveToken.addEventListener("click", async () => {
-      localStorage.setItem("poolctlAgentToken", tokenInput.value.trim());
-      tokenInput.value = "";
-      await refreshAgent();
-    });
     function bindActionButtons() {
       const unlocked = Boolean(agentToken());
       document.querySelectorAll("[data-action]").forEach((button) => {
@@ -472,8 +609,21 @@
         button.addEventListener("click", () => runAction(button));
       });
     }
-    bindActionButtons();
+
+    saveToken.addEventListener("click", async () => {
+      localStorage.setItem("poolctlAgentToken", tokenInput.value.trim());
+      tokenInput.value = "";
+      await refreshAgent();
+    });
     refresh.addEventListener("click", loadHealth);
+    copyOutput.addEventListener("click", async () => {
+      if (!output.textContent) return;
+      await navigator.clipboard.writeText(output.textContent);
+      copyOutput.textContent = "Copied";
+      setTimeout(() => { copyOutput.textContent = "Copy"; }, 1000);
+    });
+
+    bindActionButtons();
     loadHealth();
     refreshAgent();
   </script>
