@@ -1,248 +1,390 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Myprod Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
-    :root {
-      color-scheme: light;
-      --bg: #f4f5f7;
-      --surface: #ffffff;
-      --surface-soft: #f8f9fb;
-      --line: #e3e6eb;
-      --line-strong: #d3d8e0;
-      --text: #181b23;
-      --muted: #747b88;
-      --ok: #1f9d68;
-      --warn: #ba7a00;
-      --bad: #d4473f;
-      --accent: #e6654e;
-      --accent-ink: #ffffff;
-      --ink: #070719;
+    /* ---------- Design tokens ---------- */
+    :root,
+    [data-theme="light"] {
+      --bg:            #f6f7f9;
+      --surface:       #ffffff;
+      --surface-2:     #f2f3f6;
+      --surface-3:     #eceef2;
+      --border:        #e4e6ec;
+      --border-strong: #d3d7df;
+      --text:          #14161c;
+      --text-muted:    #6b7280;
+      --text-subtle:   #9099a5;
+      --accent:        #e6654e;
+      --accent-hover:  #d95a44;
+      --accent-fg:     #ffffff;
+      --ink:           #14161c;
+      --ink-fg:        #ffffff;
+      --ok:            #16a06b;
+      --ok-bg:         #e8f7f0;
+      --ok-border:     #b8e4cf;
+      --warn:          #b8770a;
+      --warn-bg:       #fdf3e0;
+      --warn-border:   #f0d9a8;
+      --bad:           #d1443c;
+      --bad-bg:        #fdecea;
+      --bad-border:    #f2c3bf;
+      --shadow-sm:     0 1px 2px rgba(15, 20, 30, .04);
+      --shadow-md:     0 4px 12px rgba(15, 20, 30, .06);
+      --radius-sm:     6px;
+      --radius:        8px;
+      --radius-lg:     8px;
     }
+    [data-theme="dark"] {
+      --bg:            #0d0f14;
+      --surface:       #14171e;
+      --surface-2:     #191d26;
+      --surface-3:     #202531;
+      --border:        #242936;
+      --border-strong: #313849;
+      --text:          #e6e8ee;
+      --text-muted:    #98a0ae;
+      --text-subtle:   #6b7285;
+      --accent:        #ef7259;
+      --accent-hover:  #f38571;
+      --accent-fg:     #14161c;
+      --ink:           #e6e8ee;
+      --ink-fg:        #0d0f14;
+      --ok:            #4ade80;
+      --ok-bg:         rgba(74, 222, 128, .10);
+      --ok-border:     rgba(74, 222, 128, .28);
+      --warn:          #fbbf5a;
+      --warn-bg:       rgba(251, 191, 90, .10);
+      --warn-border:   rgba(251, 191, 90, .28);
+      --bad:           #f47171;
+      --bad-bg:        rgba(244, 113, 113, .10);
+      --bad-border:    rgba(244, 113, 113, .28);
+      --shadow-sm:     0 1px 2px rgba(0, 0, 0, .3);
+      --shadow-md:     0 4px 12px rgba(0, 0, 0, .35);
+    }
+
+    /* ---------- Base ---------- */
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
       margin: 0;
       min-width: 320px;
       background: var(--bg);
       color: var(--text);
-      font: 14px/1.45 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    main { max-width: 1220px; margin: 0 auto; padding: 28px; }
-    header {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 18px;
-      align-items: center;
-      margin-bottom: 20px;
+      font: 14px/1.5 "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      transition: background-color .2s ease, color .2s ease;
     }
     h1, h2, h3, p { margin: 0; }
-    h1 { font-size: 24px; line-height: 1.1; letter-spacing: 0; }
-    h2 { font-size: 16px; line-height: 1.2; letter-spacing: 0; }
-    h3 { font-size: 14px; letter-spacing: 0; }
+    h1 { font-size: 22px; font-weight: 600; letter-spacing: 0; }
+    h2 { font-size: 13px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); }
+    h3 { font-size: 14px; font-weight: 600; }
     a { color: inherit; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    button, input {
-      min-height: 38px;
-      border-radius: 8px;
-      font: inherit;
-    }
-    button {
-      border: 1px solid var(--line);
-      background: var(--surface);
-      color: var(--text);
-      padding: 8px 12px;
-      cursor: pointer;
-      font-weight: 700;
-    }
-    button:hover { border-color: var(--line-strong); }
-    button:disabled { cursor: not-allowed; opacity: .55; }
-    button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
-    button.accent { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
-    button.danger { color: var(--bad); }
-    input {
-      width: min(260px, 100%);
-      border: 1px solid var(--line);
-      background: var(--surface);
-      color: var(--text);
-      padding: 8px 12px;
-    }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
-    th { color: var(--muted); font-size: 11px; text-transform: uppercase; font-weight: 800; }
-    tr:last-child td { border-bottom: 0; }
-    pre {
-      margin: 0;
-      min-height: 168px;
-      max-height: 360px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      color: #242936;
-    }
-    .muted { color: var(--muted); }
-    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-    .top-actions, .actions, .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    a:hover { color: var(--accent); }
+    .mono { font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+    .muted { color: var(--text-muted); }
+
+    /* ---------- Layout ---------- */
+    main { max-width: 1280px; margin: 0 auto; padding: 24px; }
     .shell {
       display: grid;
-      grid-template-columns: 72px minmax(0, 1fr);
-      gap: 18px;
+      grid-template-columns: 60px minmax(0, 1fr);
+      gap: 20px;
     }
     .rail {
       position: sticky;
-      top: 28px;
-      height: calc(100vh - 56px);
-      display: grid;
-      align-content: start;
-      gap: 10px;
+      top: 24px;
+      height: calc(100vh - 48px);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+    .rail-brand {
+      width: 44px; height: 44px;
+      display: grid; place-items: center;
+      background: var(--ink); color: var(--ink-fg);
+      border-radius: var(--radius-sm);
+      font-weight: 700;
+      margin-bottom: 4px;
     }
     .rail-button {
-      width: 48px;
-      height: 48px;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: var(--surface);
-      color: var(--muted);
-      font-weight: 900;
+      width: 44px; height: 44px;
+      display: grid; place-items: center;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      transition: background-color .15s ease, color .15s ease;
     }
-    .rail-button.active { background: var(--ink); color: #fff; border-color: var(--ink); }
-    .content { display: grid; gap: 14px; }
-    .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+    .rail-button:hover { background: var(--surface-2); color: var(--text); }
+    .rail-button.active { background: var(--surface-3); color: var(--text); }
+    .rail-button svg { width: 18px; height: 18px; stroke-width: 2; }
+    .rail-spacer { flex: 1; }
+
+    .content { display: grid; gap: 16px; min-width: 0; }
+
+    /* ---------- Header ---------- */
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+    }
+    .header-title p { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
+    .top-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
+
+    /* ---------- Inputs & buttons ---------- */
+    input, button {
+      height: 36px;
+      border-radius: var(--radius-sm);
+      font: inherit;
+      transition: background-color .15s ease, border-color .15s ease, color .15s ease;
+    }
+    input {
+      width: min(190px, 100%);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 12px;
+    }
+    input::placeholder { color: var(--text-subtle); }
+    input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent); }
+
+    button {
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 12px;
+      cursor: pointer;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    button:hover { border-color: var(--border-strong); background: var(--surface-2); }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button.primary { background: var(--ink); border-color: var(--ink); color: var(--ink-fg); }
+    button.primary:hover { background: color-mix(in oklab, var(--ink) 88%, transparent); }
+    button.accent { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+    button.accent:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+    button.danger { color: var(--bad); }
+    button.danger:hover { border-color: var(--bad-border); background: var(--bad-bg); }
+    button.icon { width: 36px; padding: 0; justify-content: center; }
+    button svg { width: 16px; height: 16px; stroke-width: 2; }
+    button.is-loading::before {
+      content: "";
+      width: 13px;
+      height: 13px;
+      border: 2px solid currentColor;
+      border-right-color: transparent;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Cards ---------- */
     .card {
       background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
       padding: 18px;
       min-width: 0;
     }
-    .soft { background: var(--surface-soft); }
-    .span-3 { grid-column: span 3; }
+    .card-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 14px;
+    }
+
+    /* ---------- Grid ---------- */
+    .grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 16px; }
     .span-4 { grid-column: span 4; }
     .span-5 { grid-column: span 5; }
     .span-7 { grid-column: span 7; }
     .span-8 { grid-column: span 8; }
     .span-12 { grid-column: span 12; }
+
+    /* ---------- Hero ---------- */
     .hero {
       display: grid;
-      grid-template-columns: minmax(0, .95fr) minmax(360px, 1.05fr);
-      gap: 14px;
-      align-items: stretch;
+      grid-template-columns: minmax(0, 1.2fr) minmax(320px, 1fr);
+      gap: 16px;
     }
     .hero-main {
-      min-height: 230px;
-      display: grid;
-      align-content: space-between;
       background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 28px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex; flex-direction: column; gap: 20px;
     }
-    .hero-title { font-size: 36px; line-height: 1.05; letter-spacing: 0; max-width: 560px; }
-    .hero-subtitle { margin-top: 12px; max-width: 560px; color: var(--muted); font-size: 15px; }
+    .hero-title { font-size: 28px; font-weight: 600; line-height: 1.15; letter-spacing: 0; max-width: 520px; text-transform: none; color: var(--text); }
+    .hero-subtitle { color: var(--text-muted); font-size: 14px; max-width: 520px; }
+    .ask-title { text-transform: none; color: var(--text); }
     .summary-row {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 24px;
+      gap: 8px;
+      margin-top: auto;
     }
     .summary-tile {
-      background: var(--surface-soft);
-      border: 1px solid var(--line);
-      border-radius: 8px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
       padding: 12px;
-      min-height: 72px;
     }
-    .summary-tile strong { display: block; margin-top: 4px; font-size: 20px; }
+    .summary-tile .label { color: var(--text-muted); font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+    .summary-tile strong { display: block; margin-top: 6px; font-size: 18px; font-weight: 600; }
+
     .assistant-panel {
-      min-height: 230px;
-      display: grid;
-      grid-template-rows: auto 1fr auto;
       background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      display: flex; flex-direction: column; gap: 16px;
     }
-    .assistant-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
-    .ask {
-      align-self: center;
-      display: grid;
-      grid-template-columns: 1fr 56px;
-      gap: 12px;
-      align-items: center;
-    }
-    .ask-title { font-size: 24px; line-height: 1.1; }
+    .assistant-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+    .assistant-head strong { font-size: 14px; font-weight: 600; }
+    .assistant-head p { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+    .ask { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .ask-title { font-size: 18px; font-weight: 600; letter-spacing: 0; }
+    .ask p { color: var(--text-muted); font-size: 13px; margin-top: 4px; }
     .mic {
-      width: 56px;
-      height: 56px;
-      display: grid;
-      place-items: center;
+      width: 44px; height: 44px;
+      display: grid; place-items: center;
       border-radius: 50%;
-      background: var(--surface-soft);
-      border: 1px solid var(--line);
+      background: color-mix(in oklab, var(--accent) 12%, transparent);
       color: var(--accent);
-      font-weight: 900;
+      flex-shrink: 0;
     }
+    .mic svg { width: 20px; height: 20px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    /* ---------- Pills ---------- */
     .pill {
-      display: inline-flex;
-      align-items: center;
-      min-height: 26px;
-      padding: 3px 9px;
-      border: 1px solid var(--line);
+      display: inline-flex; align-items: center; gap: 5px;
+      height: 22px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
       border-radius: 999px;
-      color: var(--muted);
-      background: var(--surface);
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-size: 11px; font-weight: 500;
       white-space: nowrap;
-      font-weight: 700;
-      font-size: 12px;
     }
-    .pill.ok { color: var(--ok); border-color: rgba(31, 157, 104, .32); background: #effaf5; }
-    .pill.warn { color: var(--warn); border-color: rgba(186, 122, 0, .32); background: #fff8ea; }
-    .pill.bad { color: var(--bad); border-color: rgba(212, 71, 63, .32); background: #fff1f0; }
+    .pill::before {
+      content: ""; width: 6px; height: 6px; border-radius: 50%;
+      background: currentColor; opacity: .8;
+    }
+    .pill.plain::before { display: none; }
+    .pill.ok   { color: var(--ok);   background: var(--ok-bg);   border-color: var(--ok-border); }
+    .pill.warn { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-border); }
+    .pill.bad  { color: var(--bad);  background: var(--bad-bg);  border-color: var(--bad-border); }
+    .pill.link { text-decoration: none; }
+    .pill.link:hover { border-color: var(--border-strong); color: var(--text); }
+
+    /* ---------- Status tiles ---------- */
     .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
     .status-tile {
-      background: var(--surface-soft);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 14px;
-      min-height: 92px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px;
     }
-    .status-tile strong { display: block; margin-top: 10px; font-size: 22px; }
-    .node-cards { display: grid; gap: 10px; }
+    .status-tile .label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 500; letter-spacing: .04em; }
+    .status-tile strong { display: block; margin-top: 8px; font-size: 15px; font-weight: 600; }
+
+    /* ---------- Tables ---------- */
+    table { width: 100%; border-collapse: collapse; }
+    .table-wrap { width: 100%; overflow-x: auto; }
+    .table-wrap table { min-width: 520px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+    th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 500; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: 0; }
+    tbody tr:hover td { background: var(--surface-2); }
+
+    /* ---------- Node cards ---------- */
+    .node-cards { display: grid; gap: 8px; }
     .node-card {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 12px;
       align-items: start;
-      background: var(--surface-soft);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
     }
-    .node-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .node-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
-    .output-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .node-card h3 { font-size: 13px; font-weight: 600; }
+    .node-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .node-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .node-actions button { height: 30px; padding: 0 10px; font-size: 12px; }
+
+    /* ---------- Output ---------- */
+    pre {
+      margin: 0;
+      min-height: 160px;
+      max-height: 360px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.6 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: var(--text);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+    }
+
+    /* ---------- Chart ---------- */
     .mini-chart {
-      height: 116px;
+      height: 100px;
       display: grid;
       grid-template-columns: repeat(12, 1fr);
-      gap: 6px;
+      gap: 5px;
       align-items: end;
-      margin-top: 18px;
+      margin-top: 14px;
     }
-    .bar { border-radius: 8px 8px 2px 2px; background: #f2b4a7; min-height: 14px; }
+    .bar { height: 10%; border-radius: 4px 4px 2px 2px; background: color-mix(in oklab, var(--accent) 32%, transparent); min-height: 10px; transition: background-color .2s ease; }
     .bar.hot { background: var(--accent); }
-    .empty { padding: 18px; color: var(--muted); text-align: center; }
+
+    .empty { padding: 18px; color: var(--text-muted); text-align: center; font-size: 13px; }
+
+    /* ---------- Responsive ---------- */
     @media (max-width: 980px) {
-      main { padding: 18px; }
+      main { padding: 16px; }
       .shell { grid-template-columns: 1fr; }
-      .rail { position: static; height: auto; display: flex; }
+      .rail {
+        position: static; height: auto;
+        flex-direction: row;
+        overflow-x: auto;
+      }
+      .rail-spacer { display: none; }
       header, .hero { grid-template-columns: 1fr; }
-      .span-3, .span-4, .span-5, .span-7, .span-8, .span-12 { grid-column: span 12; }
+      .span-4, .span-5, .span-7, .span-8, .span-12 { grid-column: span 12; }
+      .summary-row, .status-grid { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      main { padding: 10px; }
+      .shell, .content, .grid, .hero { gap: 10px; }
+      .rail { padding: 6px; }
+      header { gap: 10px; }
+      .top-actions { display: grid; grid-template-columns: 1fr auto; }
+      .top-actions input { width: 100%; grid-column: 1 / -1; }
       .summary-row, .status-grid { grid-template-columns: 1fr; }
+      .card, .hero-main, .assistant-panel { padding: 14px; }
+      .node-card { grid-template-columns: 1fr; }
+      .node-actions { justify-content: flex-start; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation-duration: .01ms !important; }
     }
   </style>
 </head>
@@ -250,23 +392,40 @@
   <main>
     <div class="shell">
       <nav class="rail" aria-label="Dashboard sections">
-        <a class="rail-button active" href="#overview" title="Overview">P</a>
-        <a class="rail-button" href="#nodes" title="Nodes">N</a>
-        <a class="rail-button" href="#apps" title="Apps">A</a>
-        <a class="rail-button" href="#actions" title="Actions">O</a>
+        <div class="rail-brand" title="Myprod">M</div>
+        <a class="rail-button active" href="#overview" title="Overview" aria-label="Overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        </a>
+        <a class="rail-button" href="#nodes" title="Nodes" aria-label="Nodes">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1"/><circle cx="7" cy="17" r="1"/></svg>
+        </a>
+        <a class="rail-button" href="#apps" title="Apps" aria-label="Apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 12l9 4 9-4"/><path d="M3 17l9 4 9-4"/></svg>
+        </a>
+        <a class="rail-button" href="#actions" title="Actions" aria-label="Actions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </a>
+        <div class="rail-spacer"></div>
+        <button class="rail-button" id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
+          <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+          <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        </button>
       </nav>
 
       <div class="content">
         <header>
-          <div>
+          <div class="header-title">
             <h1>Myprod Control</h1>
-            <p class="muted">Hosted control surface for Oracle, DigitalOcean, Nomad, and Traefik.</p>
+            <p>Hosted control surface for Oracle, DigitalOcean, Nomad, and Traefik. <span id="last-updated">Awaiting live data</span></p>
           </div>
           <div class="top-actions">
             <input id="token" type="password" placeholder="Agent token" autocomplete="off">
             <button id="save-token" class="primary">Unlock</button>
-            <button id="refresh">Refresh Health</button>
-            <a class="pill" href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">Open API</a>
+            <button id="refresh" title="Refresh health">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+              Refresh
+            </button>
+            <a class="pill plain link" href="https://api.sankalpjha.dev/" target="_blank" rel="noreferrer">Open API ↗</a>
           </div>
         </header>
 
@@ -274,13 +433,13 @@
           <div class="hero-main">
             <div>
               <div id="agent-state" class="pill warn">agent locked</div>
-              <h2 class="hero-title">Personal compute pool</h2>
-              <p class="hero-subtitle">Run backend services across the Oracle control plane and temporary worker VPS capacity without leaving the hosted dashboard.</p>
+              <h2 class="hero-title" style="margin-top:14px">Personal compute pool</h2>
+              <p class="hero-subtitle" style="margin-top:8px">Run backend services across the Oracle control plane and temporary worker VPS capacity without leaving the hosted dashboard.</p>
             </div>
             <div class="summary-row">
-              <div class="summary-tile"><span class="muted">Public API</span><strong id="overall">checking</strong></div>
-              <div class="summary-tile"><span class="muted">Control</span><strong>Oracle</strong></div>
-              <div class="summary-tile"><span class="muted">Worker</span><strong>DigitalOcean</strong></div>
+              <div class="summary-tile"><span class="label">Public API</span><strong id="overall">checking</strong></div>
+              <div class="summary-tile"><span class="label">Control</span><strong id="control-summary">checking</strong></div>
+              <div class="summary-tile"><span class="label">Workers</span><strong id="worker-summary">checking</strong></div>
             </div>
           </div>
 
@@ -288,16 +447,18 @@
             <div class="assistant-head">
               <div>
                 <strong>Operator console</strong>
-                <p class="muted">Token stays in this browser.</p>
+                <p>Token stays in this browser.</p>
               </div>
               <span id="status-capability" class="pill warn">locked</span>
             </div>
             <div class="ask">
               <div>
                 <div class="ask-title">Need pool state?</div>
-                <p class="muted">Unlock and refresh to load live nodes, apps, system status, and actions.</p>
+                <p>Unlock and refresh to load live nodes, apps, system status, and actions.</p>
               </div>
-              <div class="mic">⌁</div>
+              <div class="mic" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4.09 12.97a1 1 0 00.78 1.63H11l-2 7.4L19.91 11.03a1 1 0 00-.78-1.63H13l2-7.4z"/></svg>
+              </div>
             </div>
             <div class="actions">
               <button class="accent" data-action="control-status" disabled>Control status</button>
@@ -308,75 +469,68 @@
 
         <div class="grid">
           <section class="span-4 card">
-            <h2>System Status</h2>
-            <div class="status-grid" style="margin-top: 14px;">
-              <div class="status-tile"><span class="muted">Nomad</span><strong id="nomad-state">locked</strong></div>
-              <div class="status-tile"><span class="muted">Traefik</span><strong id="traefik-state">locked</strong></div>
-              <div class="status-tile"><span class="muted">WireGuard</span><strong id="wireguard-state">locked</strong></div>
+            <div class="card-head"><h2>System Status</h2></div>
+            <div class="status-grid">
+              <div class="status-tile"><span class="label">Nomad</span><strong id="nomad-state">locked</strong></div>
+              <div class="status-tile"><span class="label">Traefik</span><strong id="traefik-state">locked</strong></div>
+              <div class="status-tile"><span class="label">WireGuard</span><strong id="wireguard-state">locked</strong></div>
             </div>
           </section>
 
           <section class="span-4 card">
-            <h2>Endpoint Health</h2>
-            <table style="margin-top: 12px;">
+            <div class="card-head"><h2>Endpoint Health</h2></div>
+            <div class="table-wrap"><table>
               <thead><tr><th>Route</th><th>Status</th><th>Latency</th></tr></thead>
               <tbody id="health">
                 <tr><td colspan="3" class="muted">Checking Oracle ingress...</td></tr>
               </tbody>
-            </table>
+            </table></div>
           </section>
 
           <section class="span-4 card">
-            <h2>Traffic Shape</h2>
-            <p class="muted">Smoke latency snapshot</p>
-            <div class="mini-chart" aria-hidden="true">
-              <div class="bar" style="height:32%"></div>
-              <div class="bar" style="height:44%"></div>
-              <div class="bar hot" style="height:68%"></div>
-              <div class="bar" style="height:38%"></div>
-              <div class="bar" style="height:50%"></div>
-              <div class="bar hot" style="height:84%"></div>
-              <div class="bar" style="height:58%"></div>
-              <div class="bar" style="height:46%"></div>
-              <div class="bar" style="height:62%"></div>
-              <div class="bar hot" style="height:78%"></div>
-              <div class="bar" style="height:54%"></div>
-              <div class="bar" style="height:42%"></div>
+            <div class="card-head">
+              <h2>Traffic Shape</h2>
+              <span class="pill plain muted">Smoke latency</span>
+            </div>
+            <div id="traffic-chart" class="mini-chart" aria-label="Recent smoke-check latency">
+              <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+              <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
+              <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
             </div>
           </section>
 
           <section id="apps" class="span-7 card">
-            <div class="toolbar">
+            <div class="card-head">
               <h2>Managed Apps</h2>
               <span id="deploy-capability" class="pill warn">locked</span>
             </div>
-            <table style="margin-top: 12px;">
+            <div class="table-wrap"><table>
               <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Status</th></tr></thead>
               <tbody id="apps-body">
-                <tr><td>sample-api</td><td class="mono">traefik/whoami:v1.11.0</td><td>api.sankalpjha.dev</td><td>oracle-main</td><td><span class="pill warn">unlock</span></td></tr>
+                <tr><td colspan="5" class="muted">Unlock to load live apps.</td></tr>
               </tbody>
-            </table>
+            </table></div>
           </section>
 
           <section id="nodes" class="span-5 card">
-            <div class="toolbar">
+            <div class="card-head">
               <h2>Nodes</h2>
               <span id="node-capability" class="pill warn">locked</span>
             </div>
-            <div id="node-list" class="node-cards" style="margin-top: 12px;">
+            <div id="node-list" class="node-cards">
               <div class="empty">Unlock to load live nodes.</div>
             </div>
           </section>
 
           <section id="actions" class="span-5 card">
-            <h2>Node Actions</h2>
-            <div id="node-actions" class="node-cards" style="margin-top: 12px;">
+            <div class="card-head"><h2>Node Actions</h2></div>
+            <div id="node-actions" class="node-cards">
               <div class="empty">Unlock to load node controls.</div>
             </div>
           </section>
 
           <section class="span-7 card">
-            <div class="output-head">
+            <div class="card-head">
               <h2>Agent Output</h2>
               <button id="copy-output">Copy</button>
             </div>
@@ -388,6 +542,38 @@
   </main>
 
   <script>
+    /* ---------- Theme ---------- */
+    (function initTheme() {
+      const stored = localStorage.getItem("myprodTheme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const theme = stored || (prefersDark ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+    const themeToggle = document.getElementById("theme-toggle");
+    const iconSun = document.getElementById("theme-icon-sun");
+    const iconMoon = document.getElementById("theme-icon-moon");
+    function syncThemeIcon() {
+      const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+      iconSun.style.display = isDark ? "none" : "";
+      iconMoon.style.display = isDark ? "" : "none";
+    }
+    syncThemeIcon();
+    themeToggle.addEventListener("click", () => {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      localStorage.setItem("myprodTheme", next);
+      syncThemeIcon();
+    });
+
+    /* ---------- Rail active state ---------- */
+    document.querySelectorAll(".rail-button[href]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".rail-button[href]").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+
+    /* ---------- Live pool controls ---------- */
     const health = document.getElementById("health");
     const overall = document.getElementById("overall");
     const refresh = document.getElementById("refresh");
@@ -402,7 +588,20 @@
     const nomadState = document.getElementById("nomad-state");
     const traefikState = document.getElementById("traefik-state");
     const wireguardState = document.getElementById("wireguard-state");
+    const lastUpdated = document.getElementById("last-updated");
+    const controlSummary = document.getElementById("control-summary");
+    const workerSummary = document.getElementById("worker-summary");
+    const trafficBars = [...document.querySelectorAll("#traffic-chart .bar")];
     const AGENT = "https://api.sankalpjha.dev/__poolctl/api";
+    let actionRunning = false;
+    let latencyHistory = [];
+
+    try {
+      latencyHistory = JSON.parse(sessionStorage.getItem("poolctlLatencyHistory") || "[]");
+      if (!Array.isArray(latencyHistory)) latencyHistory = [];
+    } catch (_) {
+      latencyHistory = [];
+    }
 
     function agentToken() {
       return localStorage.getItem("poolctlAgentToken") || "";
@@ -410,11 +609,7 @@
 
     function escapeHTML(value) {
       return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;"
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       })[char]);
     }
 
@@ -430,10 +625,44 @@
       return pill(text, ok ? "ok" : warn ? "warn" : "bad");
     }
 
-    function setUnlocked(unlocked) {
-      document.querySelectorAll("[data-action]").forEach((button) => {
-        button.disabled = !unlocked;
+    function markUpdated(value) {
+      const date = value ? new Date(value) : new Date();
+      if (Number.isNaN(date.getTime())) return;
+      lastUpdated.textContent = `Updated ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    }
+
+    function renderTraffic(checks) {
+      const values = checks
+        .map((check) => Number(check.latencyMs))
+        .filter((value) => Number.isFinite(value) && value >= 0);
+      if (values.length) {
+        latencyHistory.push(Math.round(values.reduce((sum, value) => sum + value, 0) / values.length));
+        latencyHistory = latencyHistory.slice(-trafficBars.length);
+        try { sessionStorage.setItem("poolctlLatencyHistory", JSON.stringify(latencyHistory)); } catch (_) {}
+      }
+      const max = Math.max(...latencyHistory, 1);
+      const offset = trafficBars.length - latencyHistory.length;
+      trafficBars.forEach((bar, index) => {
+        const latency = latencyHistory[index - offset];
+        bar.style.height = latency === undefined ? "10%" : `${Math.max(12, Math.round((latency / max) * 100))}%`;
+        bar.classList.toggle("hot", latency !== undefined && latency === max);
+        bar.title = latency === undefined ? "Awaiting sample" : `${latency} ms`;
       });
+    }
+
+    function resetLiveData() {
+      nomadState.textContent = "locked";
+      traefikState.textContent = "locked";
+      wireguardState.textContent = "locked";
+      controlSummary.textContent = "locked";
+      workerSummary.textContent = "locked";
+      appsBody.innerHTML = `<tr><td colspan="5" class="muted">Unlock to load live apps.</td></tr>`;
+      nodeList.innerHTML = `<div class="empty">Unlock to load live nodes.</div>`;
+      nodeActions.innerHTML = `<div class="empty">Unlock to load node controls.</div>`;
+    }
+
+    function setUnlocked(unlocked) {
+      document.querySelectorAll("[data-action]").forEach((button) => { button.disabled = !unlocked || actionRunning; });
       agentState.textContent = unlocked ? "agent connected" : "agent locked";
       agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
       for (const id of ["deploy-capability", "node-capability", "status-capability"]) {
@@ -441,15 +670,23 @@
         el.textContent = unlocked ? "agent enabled" : "locked";
         el.className = `pill ${unlocked ? "ok" : "warn"}`;
       }
+      if (!unlocked) resetLiveData();
     }
 
     async function loadHealth() {
-      refresh.disabled = true;
       health.innerHTML = `<tr><td colspan="3" class="muted">Checking Oracle ingress...</td></tr>`;
       overall.textContent = "checking";
+      overall.style.color = "";
       try {
         const res = await fetch("/api/smoke", { cache: "no-store" });
-        const data = await res.json();
+        const raw = await res.text();
+        let data;
+        try {
+          data = JSON.parse(raw);
+        } catch (_) {
+          throw new Error(`health endpoint returned ${res.status}`);
+        }
+        if (!res.ok || !Array.isArray(data.checks)) throw new Error(data.error || `health request failed (${res.status})`);
         overall.textContent = data.ok ? "healthy" : "degraded";
         overall.style.color = data.ok ? "var(--ok)" : "var(--bad)";
         health.innerHTML = data.checks.map((check) => `
@@ -459,12 +696,12 @@
             <td>${escapeHTML(check.latencyMs)} ms</td>
           </tr>
         `).join("");
+        renderTraffic(data.checks);
+        markUpdated(data.checkedAt);
       } catch (error) {
         overall.textContent = "error";
         overall.style.color = "var(--bad)";
         health.innerHTML = `<tr><td colspan="3">${pill(error.message, "bad")}</td></tr>`;
-      } finally {
-        refresh.disabled = false;
       }
     }
 
@@ -479,7 +716,13 @@
           ...(options.headers || {})
         }
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (_) {
+        throw new Error(raw.trim().slice(0, 240) || `agent returned ${res.status}`);
+      }
       if (!res.ok || !data.ok) throw new Error(data.error || res.statusText);
       return data;
     }
@@ -489,10 +732,7 @@
         const verb = action.replace("node-", "").replace("-", " ");
         return `${verb[0].toUpperCase()}${verb.slice(1)} ${name || "node"}`;
       }
-      return {
-        "control-status": "Control status",
-        "app-deploy": "Deploy sample-api"
-      }[action] || action;
+      return { "control-status": "Control status", "app-deploy": "Deploy sample-api" }[action] || action;
     }
 
     function actionMessage(action, name, data) {
@@ -530,6 +770,14 @@
 
       const nodeState = state.Nodes || {};
       const configuredNodes = config.Nodes || [];
+      const controlNodes = configuredNodes.filter((node) => (node.Role || node.role) === "control-plane");
+      const workerNodes = configuredNodes.filter((node) => (node.Role || node.role) !== "control-plane");
+      const isReady = (node) => {
+        const live = nodeState[node.Name] || {};
+        return Boolean(live.Joined) && !live.Frozen && !live.Draining;
+      };
+      controlSummary.textContent = controlNodes.length ? `${controlNodes.filter(isReady).length}/${controlNodes.length} ready` : "none";
+      workerSummary.textContent = workerNodes.length ? `${workerNodes.filter(isReady).length}/${workerNodes.length} ready` : "none";
       nodeList.innerHTML = configuredNodes.map((node) => {
         const live = nodeState[node.Name] || {};
         const stateText = live.Draining ? "draining" : live.Frozen ? "frozen" : live.Joined ? "joined" : "ready";
@@ -537,9 +785,9 @@
           <div>
             <h3>${escapeHTML(node.Name)}</h3>
             <div class="node-meta">
-              ${pill(node.Provider || "provider")}
-              ${pill(node.PublicIP || "no public IP")}
-              ${pill(node.OverlayIP || "no overlay IP")}
+              ${pill(node.Provider || "provider", "plain")}
+              ${pill(node.PublicIP || "no public IP", "plain")}
+              ${pill(node.OverlayIP || "no overlay IP", "plain")}
             </div>
           </div>
           <div>${statePill(stateText)}</div>
@@ -550,7 +798,7 @@
         <div class="node-card">
           <div>
             <h3>${escapeHTML(node.Name)}</h3>
-            <p class="muted">${escapeHTML(node.Provider || "provider")} · ${escapeHTML(node.PublicIP || "no public IP")}</p>
+            <p class="muted" style="font-size:12px;margin-top:4px">${escapeHTML(node.Provider || "provider")} · ${escapeHTML(node.PublicIP || "no public IP")}</p>
           </div>
           <div class="node-actions">
             <button data-action="node-freeze" data-name="${escapeHTML(node.Name)}">Freeze</button>
@@ -559,14 +807,12 @@
           </div>
         </div>
       `).join("") || `<div class="empty">No nodes configured.</div>`;
+      markUpdated(data.Updated || data.updated);
       bindActionButtons();
     }
 
     async function refreshAgent(options = {}) {
-      if (!agentToken()) {
-        setUnlocked(false);
-        return;
-      }
+      if (!agentToken()) { setUnlocked(false); return; }
       try {
         const data = await agentFetch("/status");
         setUnlocked(true);
@@ -574,17 +820,24 @@
         if (!options.silent) output.textContent = JSON.stringify(data, null, 2);
       } catch (error) {
         setUnlocked(false);
-        nomadState.textContent = "locked";
-        traefikState.textContent = "locked";
-        wireguardState.textContent = "locked";
         if (!options.silent) output.textContent = `Agent auth/status failed: ${error.message}`;
       }
+    }
+
+    function setActionBusy(active, button) {
+      actionRunning = active;
+      output.setAttribute("aria-busy", String(active));
+      document.querySelectorAll("[data-action]").forEach((candidate) => {
+        candidate.disabled = active || !agentToken();
+        if (!active) candidate.classList.remove("is-loading");
+      });
+      if (active && button) button.classList.add("is-loading");
     }
 
     async function runAction(button) {
       const action = button.dataset.action;
       const name = button.dataset.name || "";
-      button.disabled = true;
+      setActionBusy(true, button);
       output.textContent = `Running ${actionLabel(action, name)}...`;
       try {
         const data = await agentFetch("/action", {
@@ -596,36 +849,61 @@
       } catch (error) {
         output.textContent = `Action failed: ${error.message}`;
       } finally {
-        button.disabled = !agentToken();
+        setActionBusy(false);
       }
     }
 
     function bindActionButtons() {
       const unlocked = Boolean(agentToken());
       document.querySelectorAll("[data-action]").forEach((button) => {
-        button.disabled = !unlocked;
+        button.disabled = !unlocked || actionRunning;
         if (button.dataset.bound === "true") return;
         button.dataset.bound = "true";
         button.addEventListener("click", () => runAction(button));
       });
     }
 
-    saveToken.addEventListener("click", async () => {
-      localStorage.setItem("poolctlAgentToken", tokenInput.value.trim());
+    async function unlockAgent() {
+      const token = tokenInput.value.trim();
+      if (!token) {
+        output.textContent = "Enter the Oracle agent token before unlocking.";
+        tokenInput.focus();
+        return;
+      }
+      localStorage.setItem("poolctlAgentToken", token);
       tokenInput.value = "";
       await refreshAgent();
+    }
+
+    async function refreshAll() {
+      refresh.disabled = true;
+      refresh.classList.add("is-loading");
+      try {
+        await Promise.all([loadHealth(), refreshAgent({ silent: true })]);
+      } finally {
+        refresh.disabled = false;
+        refresh.classList.remove("is-loading");
+      }
+    }
+
+    saveToken.addEventListener("click", unlockAgent);
+    tokenInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") unlockAgent();
     });
-    refresh.addEventListener("click", loadHealth);
+    refresh.addEventListener("click", refreshAll);
     copyOutput.addEventListener("click", async () => {
       if (!output.textContent) return;
-      await navigator.clipboard.writeText(output.textContent);
-      copyOutput.textContent = "Copied";
-      setTimeout(() => { copyOutput.textContent = "Copy"; }, 1000);
+      try {
+        await navigator.clipboard.writeText(output.textContent);
+        copyOutput.textContent = "Copied";
+        setTimeout(() => { copyOutput.textContent = "Copy"; }, 1000);
+      } catch (error) {
+        output.textContent = `Copy failed: ${error.message}`;
+      }
     });
 
     bindActionButtons();
-    loadHealth();
-    refreshAgent();
+    refreshAll();
   </script>
 </body>
 </html>
