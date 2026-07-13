@@ -344,6 +344,18 @@
     th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 500; letter-spacing: .04em; }
     tr:last-child td { border-bottom: 0; }
     tbody tr:hover td { background: var(--surface-2); }
+    .inventory-section {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .inventory-section h3 {
+      margin-bottom: 6px;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .inventory-section > p { margin-bottom: 8px; font-size: 12px; }
 
     /* ---------- Node cards ---------- */
     .node-cards { display: grid; gap: 8px; }
@@ -538,6 +550,16 @@
                 <tr><td colspan="3" class="muted">Checking Oracle ingress...</td></tr>
               </tbody>
             </table></div>
+            <div class="inventory-section">
+              <h3>Project Reservations</h3>
+              <p class="muted">Exclusive worker workspaces that are isolated from shared Nomad scheduling.</p>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Project</th><th>Worker</th><th>Isolation</th><th>Status</th></tr></thead>
+                <tbody id="reservations-body">
+                  <tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>
+                </tbody>
+              </table></div>
+            </div>
           </section>
 
           <section class="span-4 card">
@@ -663,6 +685,7 @@
     const copyOutput = document.getElementById("copy-output");
     const agentState = document.getElementById("agent-state");
     const appsBody = document.getElementById("apps-body");
+    const reservationsBody = document.getElementById("reservations-body");
     const nodeList = document.getElementById("node-list");
     const nodeActions = document.getElementById("node-actions");
     const nomadState = document.getElementById("nomad-state");
@@ -751,6 +774,7 @@
       controlSummary.textContent = "locked";
       workerSummary.textContent = "locked";
       appsBody.innerHTML = `<tr><td colspan="5" class="muted">Unlock to load live apps.</td></tr>`;
+      reservationsBody.innerHTML = `<tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>`;
       nodeList.innerHTML = `<div class="empty">Unlock to load live nodes.</div>`;
       nodeActions.innerHTML = `<div class="empty">Unlock to load node controls.</div>`;
     }
@@ -879,6 +903,16 @@
 
       const nodeState = state.Nodes || {};
       const configuredNodes = config.Nodes || [];
+      const nodeByName = Object.fromEntries(configuredNodes.map((node) => [node.Name, node]));
+      const reservations = Object.entries(nodeState)
+        .filter(([, live]) => Boolean(live.ReservedFor))
+        .map(([nodeName, live]) => ({ nodeName, live, node: nodeByName[nodeName] || {} }));
+      reservationsBody.innerHTML = reservations.map(({ nodeName, live, node }) => `<tr>
+        <td><strong>${escapeHTML(live.ReservedFor)}</strong></td>
+        <td>${escapeHTML(nodeName)}</td>
+        <td>${escapeHTML(node.Provider || "worker")} · Nomad ineligible</td>
+        <td>${statePill("reserved")}</td>
+      </tr>`).join("") || `<tr><td colspan="4" class="muted">No project workspaces are reserved.</td></tr>`;
       const controlNodes = configuredNodes.filter((node) => (node.Role || node.role) === "control-plane");
       const workerNodes = configuredNodes.filter((node) => (node.Role || node.role) !== "control-plane");
       const isReady = (node) => {

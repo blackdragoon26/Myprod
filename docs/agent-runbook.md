@@ -241,6 +241,23 @@ ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@188.166.182.174
 
 Do not run project installation commands on `oracle-main`; it remains the shared control plane and ingress host.
 
+### System-wide installation boundary
+
+System-wide installation on a reserved worker is allowed when the project requires it. Installing Ubuntu packages, compilers, P4 toolchains, libraries, containers, and project-owned systemd services does not affect `oracle-main` or workloads on other workers.
+
+Prefer project-owned paths such as `/opt/<project>` and `/srv/<project>` where the installer permits it. Before a large or invasive toolchain installation, take a DigitalOcean snapshot so the worker can be restored without reconstructing the pool membership.
+
+Do not modify or remove these Myprod lifelines unless the worker is intentionally being rebuilt:
+
+- the `ubuntu` user's SSH key and `sshd` configuration;
+- DigitalOcean firewall access to TCP 22;
+- WireGuard interface `wg0`, its routes, or UDP 51820;
+- the Nomad client configuration and service;
+- Docker, while existing project tooling depends on it;
+- the host default route, netplan configuration, bootloader, or root filesystem layout.
+
+Also monitor free disk space and memory during large builds. A reservation prevents shared scheduling on the worker, but it cannot prevent a system-wide installer from breaking that worker itself. If the worker becomes unrecoverable, rebuild only `do-worker-1`; do not troubleshoot project packages on `oracle-main`.
+
 Verify independently on Oracle:
 
 ```sh

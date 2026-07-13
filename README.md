@@ -114,6 +114,8 @@ Hosted node controls operate on the real Nomad scheduler:
 - **Release** clears project ownership but deliberately leaves the worker frozen until a separate Unfreeze confirmation.
 - **Deploy** submits the rendered job and verifies that Nomad can read its resulting status.
 
+Reserved projects appear under **Project Reservations** beside the managed app inventory. They are shown separately because a reserved machine is infrastructure capacity, not evidence that an application has been deployed.
+
 Powerful controls require an action-specific confirmation in both hosted and local dashboards. A confirmation reduces operator mistakes; the Oracle agent token and Nomad ACLs remain the actual authorization boundary.
 
 Deployment notes live in [docs/deployment.md](docs/deployment.md). Production should be Git-driven from `main` through Vercel Git Integration.
