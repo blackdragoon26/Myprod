@@ -126,6 +126,10 @@ Powerful controls require an action-specific confirmation in both hosted and loc
 
 Deployment notes live in [docs/deployment.md](docs/deployment.md). Production should be Git-driven from `main` through Vercel Git Integration.
 
+Operator concepts and application handoffs are documented in
+[docs/operator-faq.md](docs/operator-faq.md) and
+[docs/application-onboarding.md](docs/application-onboarding.md).
+
 Before any agent adds another worker, follow
 [docs/agent-runbook.md](docs/agent-runbook.md). The provider-specific selection
 notes are in [docs/digitalocean-worker.md](docs/digitalocean-worker.md). The

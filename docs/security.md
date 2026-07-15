@@ -39,6 +39,13 @@ Hosted application registration accepts only constrained identifiers, registry i
 
 The current form is not a secret-management surface. Public image references are required, and credentials must not be entered into application fields. Private registry credentials, runtime secrets, and environment variables require an encrypted storage and redaction design before they can be exposed through the hosted dashboard.
 
+The hosted dashboard may retain a sanitized last-successful status snapshot in
+browser local storage for locked, read-only visibility. The snapshot is limited
+to displayed app configuration, node identity and state, service status, and
+resource measurements. It excludes the agent token, SSH usernames, and SSH key
+paths. Cached state never enables actions and must be labeled with its capture
+time because it is not an authorization or liveness signal.
+
 ## Guard Behavior
 
 The guard protects against resource-risk, not exact cloud billing in v1. It can freeze new placements when local thresholds are crossed, but it does not stop running apps automatically.

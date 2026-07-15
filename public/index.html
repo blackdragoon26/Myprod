@@ -242,6 +242,23 @@
     .form-error { min-height: 18px; margin-top: 8px; color: var(--bad); font-size: 12px; }
     .form-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 12px; background: var(--surface); }
 
+    .faq-dialog { width: min(760px, calc(100vw - 32px)); }
+    .faq-shell { padding: 20px; }
+    .faq-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .faq-head h2 { color: var(--text); font-size: 18px; letter-spacing: 0; text-transform: none; }
+    .faq-head p { margin-top: 5px; color: var(--text-muted); font-size: 12px; }
+    .faq-list { display: grid; gap: 8px; }
+    .faq-list details { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+    .faq-list summary { cursor: pointer; padding: 12px 14px; color: var(--text); font-weight: 600; }
+    .faq-list details[open] summary { border-bottom: 1px solid var(--border); }
+    .faq-answer { padding: 12px 14px 14px; color: var(--text-muted); font-size: 13px; }
+    .faq-answer p + p, .faq-answer ul + p { margin-top: 10px; }
+    .faq-answer ul { margin: 8px 0 0; padding-left: 18px; }
+    .faq-answer li + li { margin-top: 5px; }
+    .faq-answer code { color: var(--text); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .faq-footer { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+    .faq-footer a { color: var(--accent); font-weight: 600; }
+
     /* ---------- Cards ---------- */
     .card {
       background: var(--surface);
@@ -498,6 +515,9 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         </a>
         <div class="rail-spacer"></div>
+        <button class="rail-button" id="faq-open" type="button" title="Help and FAQ" aria-label="Help and FAQ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 114.3 1.5c-.8.8-2.1 1.2-2.1 2.7"/><path d="M12 17h.01"/></svg>
+        </button>
         <button class="rail-button" id="theme-toggle" type="button" title="Toggle theme" aria-label="Toggle theme">
           <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
           <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -597,7 +617,7 @@
           <section id="resources" class="span-12 card">
             <div class="card-head">
               <h2>Resource Utilization</h2>
-              <span class="pill plain muted">Live Nomad client stats</span>
+              <span id="resource-mode" class="pill plain muted">Live Nomad client stats</span>
             </div>
             <div id="resource-grid" class="resource-grid">
               <div class="empty">Unlock to load node resources.</div>
@@ -659,6 +679,7 @@
           <span>Myprod personal compute pool</span>
           <nav class="footer-links" aria-label="Project resources">
             <a href="https://github.com/blackdragoon26/Myprod" target="_blank" rel="noopener noreferrer">Repository</a>
+            <a href="https://github.com/blackdragoon26/Myprod/blob/main/docs/operator-faq.md" target="_blank" rel="noopener noreferrer">Operator FAQ</a>
             <a href="https://github.com/blackdragoon26/Myprod/blob/main/docs/agent-runbook.md" target="_blank" rel="noopener noreferrer">Agent runbook</a>
             <a href="https://sankalpjha.dev/" target="_blank" rel="noopener noreferrer">Created by Sankalp Jha</a>
           </nav>
@@ -736,6 +757,64 @@
     </form>
   </dialog>
 
+  <dialog id="faq-dialog" class="faq-dialog" aria-labelledby="faq-title">
+    <div class="faq-shell">
+      <div class="faq-head">
+        <div>
+          <h2 id="faq-title">Myprod operator FAQ</h2>
+          <p>How applications, nodes, reservations, telemetry, and locked access work.</p>
+        </div>
+        <button id="faq-close" class="icon" type="button" aria-label="Close FAQ" title="Close">&times;</button>
+      </div>
+      <div class="faq-list">
+        <details open>
+          <summary>What is sample-api?</summary>
+          <div class="faq-answer"><p><code>sample-api</code> is a tiny Traefik <code>whoami</code> workload used to verify the complete production path: Nomad scheduling, container networking, Oracle ingress, DNS, TLS, and HTTP/HTTPS smoke checks. It is operational evidence, not a dependency of new applications.</p></div>
+        </details>
+        <details>
+          <summary>What is the difference between a managed app and a project reservation?</summary>
+          <div class="faq-answer"><p>A managed app is a container scheduled by Nomad with an explicit CPU and memory reservation. Several apps can share a node. A project reservation removes an entire worker from shared scheduling for privileged host-level work such as package installation, kernel or network changes, Mininet, or hardware-model toolchains.</p></div>
+        </details>
+        <details>
+          <summary>What must exist before I add an application?</summary>
+          <div class="faq-answer"><ul><li>An immutable public container image for the target CPU architecture.</li><li>A service listening on <code>0.0.0.0</code> at the declared container port.</li><li>An unauthenticated health path returning HTTP 2xx.</li><li>A DNS hostname pointing to Oracle ingress at <code>140.245.5.201</code>.</li><li>A joined, eligible, non-draining target node with enough capacity.</li></ul></div>
+        </details>
+        <details>
+          <summary>What do the Add application fields mean?</summary>
+          <div class="faq-answer"><ul><li><strong>Name:</strong> stable Myprod/Nomad identifier.</li><li><strong>Domain:</strong> public hostname without scheme, path, or port.</li><li><strong>Container image:</strong> public registry reference, preferably pinned to a commit or digest.</li><li><strong>Target node:</strong> exact machine where Nomad should place the workload.</li><li><strong>Container port:</strong> port exposed by the process inside its container.</li><li><strong>CPU and memory:</strong> scheduler reservations, not usage measurements.</li><li><strong>Health path:</strong> HTTP path used to decide whether deployment is healthy.</li></ul></div>
+        </details>
+        <details>
+          <summary>Does Register application deploy anything?</summary>
+          <div class="faq-answer"><p>No. Register validates and persists configuration only. The separate Deploy action renders and submits a live Nomad job, waits for a healthy allocation, and requires an explicit confirmation because it can replace a running workload.</p></div>
+        </details>
+        <details>
+          <summary>What does Resource Utilization show?</summary>
+          <div class="faq-answer"><p>CPU, memory, and root-disk figures are actual host measurements returned by Nomad client statistics. App CPU and memory values are reservations. They describe scheduler capacity promised to an app and are not the app's current process usage.</p></div>
+        </details>
+        <details>
+          <summary>What can node actions change?</summary>
+          <div class="faq-answer"><ul><li><strong>Freeze:</strong> stops new scheduling while existing allocations continue.</li><li><strong>Unfreeze:</strong> makes a clean, non-draining, unreserved node eligible.</li><li><strong>Drain:</strong> migrates or stops allocations and blocks new placement.</li><li><strong>Reserve:</strong> assigns an empty worker exclusively to one project.</li><li><strong>Release:</strong> clears ownership but leaves the node frozen for inspection.</li></ul><p>Every powerful action requires a specific confirmation.</p></div>
+        </details>
+        <details>
+          <summary>How do I add more compute capacity?</summary>
+          <div class="faq-answer"><p>Create and firewall the VPS at the cloud provider, prepare SSH access, then use the SSH-capable local Myprod operator flow to register and join it to WireGuard and Nomad. Vercel cannot perform the first join because private SSH keys must remain on the operator machine. After joining and synchronization, the hosted dashboard can monitor and control it.</p></div>
+        </details>
+        <details>
+          <summary>What remains visible while the dashboard is locked?</summary>
+          <div class="faq-answer"><p>The browser keeps the last successful pool status snapshot and its capture time. Locked views are explicitly labeled cached and all mutation controls remain disabled. The public ingress smoke checks can still refresh without an agent token. Cached state can be stale and must never be treated as proof of current scheduler state.</p></div>
+        </details>
+        <details>
+          <summary>What is intentionally unsupported?</summary>
+          <div class="faq-answer"><p>The current app form does not store secrets, environment variables, private-registry credentials, persistent volumes, or arbitrary Nomad configuration. It also does not create cloud instances or DNS records. These require separate secure lifecycle support.</p></div>
+        </details>
+      </div>
+      <div class="faq-footer">
+        <a href="https://github.com/blackdragoon26/Myprod/blob/main/docs/operator-faq.md" target="_blank" rel="noopener noreferrer">Read the complete operator FAQ</a>
+        <button id="faq-done" type="button">Done</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     /* ---------- Theme ---------- */
     (function initTheme() {
@@ -790,6 +869,7 @@
     const appError = document.getElementById("app-error");
     const reservationsBody = document.getElementById("reservations-body");
     const resourceGrid = document.getElementById("resource-grid");
+    const resourceMode = document.getElementById("resource-mode");
     const nodeList = document.getElementById("node-list");
     const nodeActions = document.getElementById("node-actions");
     const nomadState = document.getElementById("nomad-state");
@@ -808,8 +888,14 @@
     const confirmationError = document.getElementById("confirmation-error");
     const confirmationCancel = document.getElementById("confirmation-cancel");
     const confirmationAccept = document.getElementById("confirmation-accept");
+    const faqOpen = document.getElementById("faq-open");
+    const faqDialog = document.getElementById("faq-dialog");
+    const faqClose = document.getElementById("faq-close");
+    const faqDone = document.getElementById("faq-done");
     const AGENT = "https://api.sankalpjha.dev/__poolctl/api";
+    const SNAPSHOT_KEY = "poolctlLastStatusSnapshotV1";
     let actionRunning = false;
+    let agentConnected = false;
     let latestConfig = {};
     let latencyHistory = [];
 
@@ -822,6 +908,70 @@
 
     function agentToken() {
       return localStorage.getItem("poolctlAgentToken") || "";
+    }
+
+    function snapshotData(data) {
+      const config = data.Config || data.config || {};
+      const state = data.State || data.state || {};
+      const system = data.System || data.system || {};
+      const resources = data.Resources || data.resources || [];
+      const nodes = (config.Nodes || []).map((node) => ({
+        Name: node.Name, Provider: node.Provider, Role: node.Role,
+        PublicIP: node.PublicIP, OverlayIP: node.OverlayIP
+      }));
+      const apps = (config.Apps || []).map((app) => ({
+        Name: app.Name, Image: app.Image, Domain: app.Domain, Port: app.Port,
+        PreferNode: app.PreferNode, AllowWorkers: app.AllowWorkers,
+        CPU: app.CPU, MemoryMB: app.MemoryMB, HealthPath: app.HealthPath
+      }));
+      const nodeState = Object.fromEntries(Object.entries(state.Nodes || {}).map(([name, value]) => [name, {
+        Frozen: Boolean(value.Frozen), Draining: Boolean(value.Draining),
+        Joined: Boolean(value.Joined), ReservedFor: value.ReservedFor || ""
+      }]));
+      const appState = Object.fromEntries(Object.entries(state.Apps || {}).map(([name, value]) => [name, {
+        Node: value.Node || "", Status: value.Status || ""
+      }]));
+      return {
+        Config: { Name: config.Name || "", Nodes: nodes, Apps: apps },
+        State: { Nodes: nodeState, Apps: appState },
+        System: {
+          nomad: system.nomad || system.Nomad || "",
+          traefik: system.traefik || system.Traefik || "",
+          wireguard: system.wireguard || system.WireGuard || ""
+        },
+        Resources: resources.map((resource) => ({
+          name: resource.name || "", status: resource.status || "",
+          cpuUsedPercent: resource.cpuUsedPercent || 0,
+          memoryUsedBytes: resource.memoryUsedBytes || 0,
+          memoryAvailableBytes: resource.memoryAvailableBytes || 0,
+          memoryUsedPercent: resource.memoryUsedPercent || 0,
+          diskUsedBytes: resource.diskUsedBytes || 0,
+          diskAvailableBytes: resource.diskAvailableBytes || 0,
+          diskUsedPercent: resource.diskUsedPercent || 0,
+          error: resource.error || ""
+        })),
+        Updated: data.Updated || data.updated || new Date().toISOString()
+      };
+    }
+
+    function saveSnapshot(data) {
+      const snapshot = snapshotData(data);
+      try {
+        localStorage.setItem(SNAPSHOT_KEY, JSON.stringify({
+          capturedAt: snapshot.Updated,
+          data: snapshot
+        }));
+      } catch (_) {}
+    }
+
+    function loadSnapshot() {
+      try {
+        const snapshot = JSON.parse(localStorage.getItem(SNAPSHOT_KEY) || "null");
+        if (!snapshot || !snapshot.data || !snapshot.capturedAt) return null;
+        return snapshot;
+      } catch (_) {
+        return null;
+      }
     }
 
     function setAuthResult(message, tone = "") {
@@ -890,10 +1040,12 @@
       }).join("") || `<div class="empty">No live resource samples are available.</div>`;
     }
 
-    function markUpdated(value) {
+    function markUpdated(value, cached = false) {
       const date = value ? new Date(value) : new Date();
       if (Number.isNaN(date.getTime())) return;
-      lastUpdated.textContent = `Updated ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      lastUpdated.textContent = cached
+        ? `Last live snapshot ${date.toLocaleString([], { dateStyle: "medium", timeStyle: "medium" })}`
+        : `Live · updated ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
     }
 
     function renderTraffic(checks) {
@@ -924,11 +1076,14 @@
       appsBody.innerHTML = `<tr><td colspan="7" class="muted">Unlock to load live apps.</td></tr>`;
       reservationsBody.innerHTML = `<tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>`;
       resourceGrid.innerHTML = `<div class="empty">Unlock to load node resources.</div>`;
+      resourceMode.textContent = "Agent locked";
+      resourceMode.className = "pill plain muted";
       nodeList.innerHTML = `<div class="empty">Unlock to load live nodes.</div>`;
       nodeActions.innerHTML = `<div class="empty">Unlock to load node controls.</div>`;
     }
 
     function setUnlocked(unlocked) {
+      agentConnected = unlocked;
       document.querySelectorAll("[data-action]").forEach((button) => { button.disabled = !unlocked || actionRunning; });
       tokenInput.hidden = unlocked;
       saveToken.hidden = unlocked;
@@ -941,7 +1096,19 @@
         el.textContent = unlocked ? "agent enabled" : "locked";
         el.className = `pill ${unlocked ? "ok" : "warn"}`;
       }
-      if (!unlocked) resetLiveData();
+      resourceMode.textContent = unlocked ? "Live Nomad client stats" : "Agent locked";
+      resourceMode.className = `pill ${unlocked ? "ok" : "plain muted"}`;
+      if (!unlocked) {
+        const snapshot = loadSnapshot();
+        if (snapshot) {
+          renderAgent(snapshot.data, { cached: true });
+          agentState.textContent = "agent locked · cached view";
+          resourceMode.textContent = "Cached snapshot · not live";
+          resourceMode.className = "pill warn";
+        } else {
+          resetLiveData();
+        }
+      }
     }
 
     async function loadHealth() {
@@ -968,7 +1135,6 @@
           </tr>
         `).join("");
         renderTraffic(data.checks);
-        markUpdated(data.checkedAt);
       } catch (error) {
         overall.textContent = "error";
         overall.style.color = "var(--bad)";
@@ -1029,7 +1195,7 @@
       return `${actionLabel(action, name)} completed.\n\n${raw || "State updated."}`;
     }
 
-    function renderAgent(data) {
+    function renderAgent(data, options = {}) {
       const config = data.Config || data.config || {};
       const state = data.State || data.state || {};
       const system = data.System || data.system || {};
@@ -1115,7 +1281,7 @@
           </div>
         </div>
       `}).join("") || `<div class="empty">No nodes configured.</div>`;
-      markUpdated(data.Updated || data.updated);
+      markUpdated(data.Updated || data.updated, Boolean(options.cached));
       bindActionButtons();
     }
 
@@ -1123,6 +1289,7 @@
       if (!agentToken()) { setUnlocked(false); return; }
       try {
         const data = await agentFetch("/status");
+        saveSnapshot(data);
         setUnlocked(true);
         setAuthResult("Connected", "ok");
         renderAgent(data);
@@ -1147,10 +1314,10 @@
       actionRunning = active;
       output.setAttribute("aria-busy", String(active));
       document.querySelectorAll("[data-action]").forEach((candidate) => {
-        candidate.disabled = active || !agentToken();
+        candidate.disabled = active || !agentConnected;
         if (!active) candidate.classList.remove("is-loading");
       });
-      addApp.disabled = active || !agentToken();
+      addApp.disabled = active || !agentConnected;
       if (active && button) button.classList.add("is-loading");
     }
 
@@ -1259,7 +1426,7 @@
     }
 
     function bindActionButtons() {
-      const unlocked = Boolean(agentToken());
+      const unlocked = agentConnected;
       document.querySelectorAll("[data-action]").forEach((button) => {
         button.disabled = !unlocked || actionRunning;
         if (button.dataset.bound === "true") return;
@@ -1272,6 +1439,10 @@
       appDialog.close();
       appError.textContent = "";
       appForm.reset();
+    }
+
+    function closeFAQ() {
+      faqDialog.close();
     }
 
     function openAppDialog() {
@@ -1330,6 +1501,7 @@
       try {
         const data = await agentFetch("/status", {}, token);
         localStorage.setItem("poolctlAgentToken", token);
+        saveSnapshot(data);
         tokenInput.value = "";
         setUnlocked(true);
         setAuthResult("Connected", "ok");
@@ -1375,6 +1547,10 @@
     });
     refresh.addEventListener("click", refreshAll);
     addApp.addEventListener("click", openAppDialog);
+    faqOpen.addEventListener("click", () => faqDialog.showModal());
+    faqClose.addEventListener("click", closeFAQ);
+    faqDone.addEventListener("click", closeFAQ);
+    faqDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeFAQ(); });
     appClose.addEventListener("click", closeAppDialog);
     appCancel.addEventListener("click", closeAppDialog);
     appDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeAppDialog(); });
