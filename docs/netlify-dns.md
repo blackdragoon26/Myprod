@@ -55,8 +55,9 @@ command output. Do not run a command that prints `/etc/poolctl-agent.env`.
 4. Myprod finds the Netlify zone and lists records for the exact hostname.
 5. If no conflicting record exists, it creates an A record with a 300-second
    TTL pointing to `140.245.5.201`.
-6. The agent checks public resolution. The app shows `ready` immediately when
-   resolved or `pending` while propagation is incomplete.
+6. The agent checks resolution through both Oracle's host resolver and an
+   independent public resolver. The app shows `ready` when either observes the
+   exact configured ingress IP, or `pending` while propagation is incomplete.
 7. For `pending`, wait and select **Check DNS**. Deployment is enabled only
    after the managed record reaches `ready`.
 

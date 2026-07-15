@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -105,5 +106,20 @@ func TestNetlifyDNSEnsureARequiresConfigurationAndManagedZone(t *testing.T) {
 	result, err = dns.EnsureA(context.Background(), "api.example.com")
 	if err == nil || result.Status != "error" || !strings.Contains(err.Error(), "outside managed zone") {
 		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
+func TestNetlifyDNSUsesPublicResolverWhenHostResolverIsStale(t *testing.T) {
+	dns := &netlifyDNS{
+		targetIPv4: "140.245.5.201",
+		lookupHost: func(context.Context, string) ([]string, error) {
+			return nil, errors.New("host resolver cached NXDOMAIN")
+		},
+		lookupPublic: func(context.Context, string) ([]string, error) {
+			return []string{"140.245.5.201"}, nil
+		},
+	}
+	if !dns.waitForResolution(context.Background(), "splidt-api.sankalpjha.dev") {
+		t.Fatal("expected independent public resolver to verify the target")
 	}
 }

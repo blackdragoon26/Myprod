@@ -35,12 +35,13 @@ type dnsManager interface {
 }
 
 type netlifyDNS struct {
-	token      string
-	zone       string
-	targetIPv4 string
-	client     *http.Client
-	lookupHost func(context.Context, string) ([]string, error)
-	apiBase    string
+	token        string
+	zone         string
+	targetIPv4   string
+	client       *http.Client
+	lookupHost   func(context.Context, string) ([]string, error)
+	lookupPublic func(context.Context, string) ([]string, error)
+	apiBase      string
 }
 
 type netlifyZone struct {
@@ -57,13 +58,21 @@ type netlifyRecord struct {
 }
 
 func newNetlifyDNSFromEnv() *netlifyDNS {
+	publicResolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			dialer := net.Dialer{Timeout: 3 * time.Second}
+			return dialer.DialContext(ctx, network, "1.1.1.1:53")
+		},
+	}
 	return &netlifyDNS{
-		token:      strings.TrimSpace(os.Getenv("NETLIFY_AUTH_TOKEN")),
-		zone:       normalizeHostname(os.Getenv("MYPROD_DNS_ZONE")),
-		targetIPv4: strings.TrimSpace(os.Getenv("MYPROD_INGRESS_IPV4")),
-		client:     &http.Client{Timeout: 12 * time.Second},
-		lookupHost: net.DefaultResolver.LookupHost,
-		apiBase:    netlifyAPIBase,
+		token:        strings.TrimSpace(os.Getenv("NETLIFY_AUTH_TOKEN")),
+		zone:         normalizeHostname(os.Getenv("MYPROD_DNS_ZONE")),
+		targetIPv4:   strings.TrimSpace(os.Getenv("MYPROD_INGRESS_IPV4")),
+		client:       &http.Client{Timeout: 12 * time.Second},
+		lookupHost:   net.DefaultResolver.LookupHost,
+		lookupPublic: publicResolver.LookupHost,
+		apiBase:      netlifyAPIBase,
 	}
 }
 
@@ -155,13 +164,8 @@ func (d *netlifyDNS) listRecords(ctx context.Context, zoneID string) ([]netlifyR
 
 func (d *netlifyDNS) waitForResolution(ctx context.Context, hostname string) bool {
 	for attempt := 0; attempt < 6; attempt++ {
-		addresses, err := d.lookupHost(ctx, hostname)
-		if err == nil {
-			for _, address := range addresses {
-				if address == d.targetIPv4 {
-					return true
-				}
-			}
+		if d.resolvesToTarget(ctx, d.lookupHost, hostname) || d.resolvesToTarget(ctx, d.lookupPublic, hostname) {
+			return true
 		}
 		if attempt == 5 {
 			break
@@ -170,6 +174,22 @@ func (d *netlifyDNS) waitForResolution(ctx context.Context, hostname string) boo
 		case <-ctx.Done():
 			return false
 		case <-time.After(2 * time.Second):
+		}
+	}
+	return false
+}
+
+func (d *netlifyDNS) resolvesToTarget(ctx context.Context, lookup func(context.Context, string) ([]string, error), hostname string) bool {
+	if lookup == nil {
+		return false
+	}
+	addresses, err := lookup(ctx, hostname)
+	if err != nil {
+		return false
+	}
+	for _, address := range addresses {
+		if address == d.targetIPv4 {
+			return true
 		}
 	}
 	return false
