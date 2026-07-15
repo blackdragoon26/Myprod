@@ -18,7 +18,7 @@ Oracle is both:
 - the control-plane node
 - the centralized public ingress node
 
-That means users hit Oracle first through Cloudflare/Traefik, even if the backend container is later scheduled onto another worker VPS.
+That means users hit Oracle first through Netlify DNS and Traefik, even if the backend container is later scheduled onto another worker VPS.
 
 ## Why Dry-Run First?
 

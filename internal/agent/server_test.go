@@ -41,6 +41,103 @@ func TestRegisterAppEndpointPersistsWithoutDeploying(t *testing.T) {
 	if state.Apps["example-api"].Status != "configured" {
 		t.Fatalf("app state = %#v", state.Apps["example-api"])
 	}
+	if state.Apps["example-api"].DNSStatus != "manual" {
+		t.Fatalf("manual DNS state = %#v", state.Apps["example-api"])
+	}
+}
+
+type fakeDNS struct {
+	result dnsResult
+	err    error
+	calls  []string
+}
+
+func (d *fakeDNS) Capability() dnsCapability {
+	return dnsCapability{Provider: "netlify", Zone: "sankalpjha.dev", TargetIPv4: "140.245.5.201", Configured: true}
+}
+
+func (d *fakeDNS) EnsureA(_ context.Context, hostname string) (dnsResult, error) {
+	d.calls = append(d.calls, hostname)
+	return d.result, d.err
+}
+
+func TestRegisterAppAutomaticallyEnsuresManagedDNS(t *testing.T) {
+	store := testStore(t)
+	dns := &fakeDNS{result: dnsResult{Status: "ready", Message: "A record resolves to 140.245.5.201"}}
+	s := &server{store: store, token: "test-token", dns: dns, runNomad: func(context.Context, ...string) (string, error) {
+		t.Fatal("registration must not call Nomad")
+		return "", nil
+	}}
+	body := `{"Name":"splidt-showcase","Image":"ghcr.io/blackdragoon26/splidt-showcase@sha256:8837ec0ef23f9147af600d5652f2ef866fcdf8a7ae10c984af5d0dfc15e53009","Domain":"splidt-api.sankalpjha.dev","Port":8765,"PreferNode":"do-worker-1","CPU":1000,"MemoryMB":2048,"HealthPath":"/api/system/capabilities","ManageDNS":true}`
+	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/apps", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	recorder := httptest.NewRecorder()
+	s.handleApps(recorder, req)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+	if len(dns.calls) != 1 || dns.calls[0] != "splidt-api.sankalpjha.dev" {
+		t.Fatalf("DNS calls = %#v", dns.calls)
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, ok := cfg.FindApp("splidt-showcase")
+	if !ok || !app.ManageDNS {
+		t.Fatalf("app = %#v", app)
+	}
+	if got := state.Apps["splidt-showcase"]; got.DNSStatus != "ready" || !strings.Contains(got.DNSMessage, "resolves") {
+		t.Fatalf("DNS state = %#v", got)
+	}
+}
+
+func TestDeployBlocksUntilManagedDNSIsReady(t *testing.T) {
+	store := testStore(t)
+	app := pool.App{Name: "dns-api", Image: "ghcr.io/example/dns-api:abc", Domain: "dns-api.sankalpjha.dev", Port: 8080, PreferNode: "do-worker-1", CPU: 500, MemoryMB: 512, HealthPath: "/health", ManageDNS: true}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	dns := &fakeDNS{result: dnsResult{Status: "pending", Message: "public DNS propagation is pending"}}
+	s := &server{store: store, dns: dns, runNomad: func(context.Context, ...string) (string, error) {
+		t.Fatal("Nomad must not run before DNS is ready")
+		return "", nil
+	}}
+	_, err := s.runAction(context.Background(), "app-deploy", "dns-api", "")
+	if err == nil || !strings.Contains(err.Error(), "managed DNS is pending") {
+		t.Fatalf("deploy error = %v", err)
+	}
+	_, state, _ := store.Load()
+	if state.Apps["dns-api"].DNSStatus != "pending" {
+		t.Fatalf("DNS state = %#v", state.Apps["dns-api"])
+	}
+}
+
+func TestDeployWithReadyManagedDNSPreservesDNSState(t *testing.T) {
+	store := testStore(t)
+	app := pool.App{Name: "dns-api", Image: "ghcr.io/example/dns-api:abc", Domain: "dns-api.sankalpjha.dev", Port: 8080, PreferNode: "do-worker-1", CPU: 500, MemoryMB: 512, HealthPath: "/health", ManageDNS: true}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	dns := &fakeDNS{result: dnsResult{Status: "ready", Message: "A record resolves to 140.245.5.201"}}
+	runner := func(_ context.Context, args ...string) (string, error) {
+		if strings.Join(args, " ") == "job status -json dns-api" {
+			return `[{"Allocations":[{"ID":"alloc-1","JobID":"dns-api","NodeName":"do-worker-1","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+		}
+		return "Nomad accepted command.\n", nil
+	}
+	s := &server{store: store, dns: dns, runNomad: runner}
+	if _, err := s.runAction(context.Background(), "app-deploy", "dns-api", ""); err != nil {
+		t.Fatal(err)
+	}
+	_, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := state.Apps["dns-api"]
+	if got.Status != "deployed" || got.Node != "do-worker-1" || got.DNSStatus != "ready" || !strings.Contains(got.DNSMessage, "resolves") {
+		t.Fatalf("deployment state = %#v", got)
+	}
 }
 
 func TestReadNodeResourcesUsesLiveClientStats(t *testing.T) {

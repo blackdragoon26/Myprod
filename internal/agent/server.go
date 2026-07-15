@@ -24,6 +24,7 @@ type server struct {
 	store    pool.Store
 	token    string
 	runNomad func(context.Context, ...string) (string, error)
+	dns      dnsManager
 }
 
 type nomadNode struct {
@@ -62,6 +63,7 @@ type response struct {
 	Checks    []check        `json:"checks,omitempty"`
 	System    systemState    `json:"system,omitempty"`
 	Resources []nodeResource `json:"resources,omitempty"`
+	DNS       dnsCapability  `json:"dns"`
 	Updated   string         `json:"updated,omitempty"`
 }
 
@@ -145,7 +147,7 @@ func Serve(args []string) error {
 	if !isLoopback(addr) && len(token) < 32 {
 		return errors.New("POOLCTL_AGENT_TOKEN must be at least 32 characters when binding outside localhost")
 	}
-	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, runNomad: runNomad}
+	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, runNomad: runNomad, dns: newNetlifyDNSFromEnv()}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
@@ -189,6 +191,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		System:    readSystemState(r.Context()),
 		Checks:    runSmokes(r.Context(), cfg),
 		Resources: s.readNodeResources(r.Context()),
+		DNS:       s.dnsCapability(),
 		Updated:   time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -214,9 +217,17 @@ func (s *server) handleApps(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		return
 	}
+	output := fmt.Sprintf("Registered application %s for %s. No workload was deployed.\n", app.Name, app.PreferNode)
+	if app.ManageDNS {
+		result, dnsErr := s.syncAppDNS(r.Context(), app)
+		output += fmt.Sprintf("Managed DNS: %s - %s\n", result.Status, result.Message)
+		if dnsErr != nil {
+			output += "Deployment remains blocked until managed DNS is ready.\n"
+		}
+	}
 	writeJSON(w, http.StatusCreated, response{
 		OK:      true,
-		Output:  fmt.Sprintf("Registered application %s for %s. No workload was deployed.\n", app.Name, app.PreferNode),
+		Output:  output,
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -267,6 +278,24 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 	switch action {
 	case "control-status":
 		return run(ctx, "systemctl", "is-active", "nomad", "traefik", "wg-quick@wg0")
+	case "app-dns-sync":
+		if name == "" {
+			return "", errors.New("missing app name")
+		}
+		cfg, _, err := s.store.Load()
+		if err != nil {
+			return "", err
+		}
+		app, ok := cfg.FindApp(name)
+		if !ok {
+			return "", fmt.Errorf("unknown app %q", name)
+		}
+		if !app.ManageDNS {
+			return "", fmt.Errorf("app %s uses externally managed DNS", name)
+		}
+		result, err := s.syncAppDNS(ctx, app)
+		output := fmt.Sprintf("Managed DNS %s: %s\n", result.Status, result.Message)
+		return output, err
 	case "app-deploy":
 		if name == "" {
 			return "", errors.New("missing app name")
@@ -278,6 +307,19 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		app, ok := cfg.FindApp(name)
 		if !ok {
 			return "", fmt.Errorf("unknown app %q", name)
+		}
+		if app.ManageDNS {
+			result, dnsErr := s.syncAppDNS(ctx, app)
+			if dnsErr != nil {
+				return "", fmt.Errorf("managed DNS %s: %w", result.Status, dnsErr)
+			}
+			if result.Status != "ready" {
+				return "", fmt.Errorf("managed DNS is %s: %s", result.Status, result.Message)
+			}
+			cfg, state, err = s.store.Load()
+			if err != nil {
+				return "", err
+			}
 		}
 		placement := app.PreferNode
 		if placement == "" {
@@ -418,6 +460,37 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 	default:
 		return "", fmt.Errorf("unknown action %q", action)
 	}
+}
+
+func (s *server) dnsCapability() dnsCapability {
+	if s.dns == nil {
+		return dnsCapability{Provider: "netlify"}
+	}
+	return s.dns.Capability()
+}
+
+func (s *server) syncAppDNS(ctx context.Context, app pool.App) (dnsResult, error) {
+	if !app.ManageDNS {
+		return dnsResult{Status: "manual", Message: "DNS is managed outside Myprod"}, nil
+	}
+	if s.dns == nil {
+		result := dnsResult{Status: "unconfigured", Message: "DNS automation is not configured on Oracle"}
+		_ = s.store.SetAppDNS(app.Name, result.Status, result.Message)
+		return result, errors.New(result.Message)
+	}
+	result, err := s.dns.EnsureA(ctx, app.Domain)
+	status := result.Status
+	if status == "" {
+		status = "error"
+	}
+	message := result.Message
+	if message == "" && err != nil {
+		message = err.Error()
+	}
+	if saveErr := s.store.SetAppDNS(app.Name, status, message); saveErr != nil {
+		return dnsResult{Status: status, Message: message}, saveErr
+	}
+	return dnsResult{Status: status, Message: message}, err
 }
 
 func (s *server) nomad(ctx context.Context, args ...string) (string, error) {

@@ -31,7 +31,7 @@ The first target is personal projects, not enterprise high availability.
 - Scheduler: Nomad
 - Ingress: Traefik on Oracle
 - Private networking: WireGuard
-- DNS: Netlify DNS for the current `sankalpjha.dev` domain; Cloudflare sync can be added later
+- DNS: Netlify DNS, with optional idempotent A-record creation and verification through the Oracle agent
 - Secrets: SOPS + age encrypted env files
 
 Consul, provider API provisioning, per-node ingress, automatic database failover, and backup automation are intentionally out of v1.
@@ -105,7 +105,7 @@ https://myprod-control.vercel.app/
 
 It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/smoke`, and can call the Oracle-local `poolctl agent` through `https://api.sankalpjha.dev/__poolctl` after unlocking with the agent token. The dashboard includes links to the repo, docs, and creator site.
 
-The hosted dashboard can register a public container image as a managed app. Registration validates and persists the app name, image, domain, target node, container port, health path, CPU reservation, and memory reservation in Oracle's agent store. It does not deploy implicitly. The operator reviews the new configured row and uses its separately confirmed **Deploy** action when DNS and the image are ready.
+The hosted dashboard can register a public container image as a managed app. Registration validates and persists the app name, image, domain, target node, container port, health path, CPU reservation, memory reservation, and DNS ownership mode in Oracle's agent store. When managed DNS is selected, the Oracle agent idempotently creates or verifies the Netlify A record and records propagation state. It never overwrites conflicting A, AAAA, or CNAME records. Registration does not deploy implicitly; **Deploy** remains a separately confirmed action and is blocked until managed DNS is ready.
 
 **Resource Utilization** reads actual CPU, memory, and root-disk usage from Nomad's client stats endpoint for every registered node. These live host measurements are separate from the CPU and memory reservations shown for each managed app.
 
@@ -129,6 +129,8 @@ Deployment notes live in [docs/deployment.md](docs/deployment.md). Production sh
 Operator concepts and application handoffs are documented in
 [docs/operator-faq.md](docs/operator-faq.md) and
 [docs/application-onboarding.md](docs/application-onboarding.md).
+Netlify credential setup and DNS lifecycle behavior are documented in
+[docs/netlify-dns.md](docs/netlify-dns.md).
 
 Before any agent adds another worker, follow
 [docs/agent-runbook.md](docs/agent-runbook.md). The provider-specific selection
@@ -145,7 +147,7 @@ and synchronized to the Oracle agent store.
 4. SSH bootstrap for Oracle control plane.
 5. Deploy first app through Nomad and Traefik.
 6. SSH bootstrap for worker nodes.
-7. DNS sync for the active DNS provider.
+7. Expand managed DNS beyond the current Netlify A-record lifecycle.
 8. SOPS/age secret injection.
 9. Guard systemd timer.
 10. WireGuard key/IP lifecycle for joined workers.

@@ -238,6 +238,10 @@
     .field.wide { grid-column: 1 / -1; }
     .field label { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
     .field input, .field select { width: 100%; }
+    .toggle-field { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+    .toggle-field input { width: 16px; height: 16px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--accent); }
+    .toggle-field label { color: var(--text); font-weight: 600; cursor: pointer; }
+    .toggle-field p { margin-top: 3px; color: var(--text-muted); font-size: 12px; }
     .form-note { margin-top: 16px; padding: 10px 12px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius-sm); font-size: 12px; }
     .form-error { min-height: 18px; margin-top: 8px; color: var(--bad); font-size: 12px; }
     .form-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 12px; background: var(--surface); }
@@ -633,9 +637,9 @@
               </div>
             </div>
             <div class="table-wrap"><table>
-              <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Reservation</th><th>Status</th><th>Action</th></tr></thead>
+              <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>DNS</th><th>Node</th><th>Reservation</th><th>Status</th><th>Action</th></tr></thead>
               <tbody id="apps-body">
-                <tr><td colspan="7" class="muted">Unlock to load live apps.</td></tr>
+                <tr><td colspan="8" class="muted">Unlock to load live apps.</td></tr>
               </tbody>
             </table></div>
             <div class="inventory-section">
@@ -747,8 +751,15 @@
           <label for="app-health">Health path</label>
           <input id="app-health" name="health" required maxlength="256" value="/" autocomplete="off">
         </div>
+        <div class="toggle-field">
+          <input id="app-manage-dns" name="manage_dns" type="checkbox" checked>
+          <div>
+            <label for="app-manage-dns">Create and verify DNS automatically</label>
+            <p id="app-dns-note">Myprod will ensure an A record points this hostname to Oracle ingress. Conflicting records are never overwritten.</p>
+          </div>
+        </div>
       </div>
-      <div class="form-note">Public images only. Secrets, environment variables, and persistent volumes are not stored by this release.</div>
+      <div class="form-note">Public images only. DNS credentials remain on Oracle. Secrets, environment variables, and persistent volumes are not stored by this release.</div>
       <div id="app-error" class="form-error" role="alert"></div>
       <div class="form-actions">
         <button id="app-cancel" type="button">Cancel</button>
@@ -777,15 +788,15 @@
         </details>
         <details>
           <summary>What must exist before I add an application?</summary>
-          <div class="faq-answer"><ul><li>An immutable public container image for the target CPU architecture.</li><li>A service listening on <code>0.0.0.0</code> at the declared container port.</li><li>An unauthenticated health path returning HTTP 2xx.</li><li>A DNS hostname pointing to Oracle ingress at <code>140.245.5.201</code>.</li><li>A joined, eligible, non-draining target node with enough capacity.</li></ul></div>
+          <div class="faq-answer"><ul><li>An immutable public container image for the target CPU architecture.</li><li>A service listening on <code>0.0.0.0</code> at the declared container port.</li><li>An unauthenticated health path returning HTTP 2xx.</li><li>A hostname under the configured Netlify zone, or an externally managed hostname already pointing to Oracle ingress at <code>140.245.5.201</code>.</li><li>A joined, eligible, non-draining target node with enough capacity.</li></ul></div>
         </details>
         <details>
           <summary>What do the Add application fields mean?</summary>
-          <div class="faq-answer"><ul><li><strong>Name:</strong> stable Myprod/Nomad identifier.</li><li><strong>Domain:</strong> public hostname without scheme, path, or port.</li><li><strong>Container image:</strong> public registry reference, preferably pinned to a commit or digest.</li><li><strong>Target node:</strong> exact machine where Nomad should place the workload.</li><li><strong>Container port:</strong> port exposed by the process inside its container.</li><li><strong>CPU and memory:</strong> scheduler reservations, not usage measurements.</li><li><strong>Health path:</strong> HTTP path used to decide whether deployment is healthy.</li></ul></div>
+          <div class="faq-answer"><ul><li><strong>Name:</strong> stable Myprod/Nomad identifier.</li><li><strong>Domain:</strong> public hostname without scheme, path, or port.</li><li><strong>Container image:</strong> public registry reference, preferably pinned to a commit or digest.</li><li><strong>Target node:</strong> exact machine where Nomad should place the workload.</li><li><strong>Container port:</strong> port exposed by the process inside its container.</li><li><strong>CPU and memory:</strong> scheduler reservations, not usage measurements.</li><li><strong>Health path:</strong> HTTP path used to decide whether deployment is healthy.</li><li><strong>Automatic DNS:</strong> create and verify the exact Netlify A record; disable it for externally managed DNS.</li></ul></div>
         </details>
         <details>
           <summary>Does Register application deploy anything?</summary>
-          <div class="faq-answer"><p>No. Register validates and persists configuration only. The separate Deploy action renders and submits a live Nomad job, waits for a healthy allocation, and requires an explicit confirmation because it can replace a running workload.</p></div>
+          <div class="faq-answer"><p>Register never starts a workload. It validates and persists configuration and, when automatic DNS is selected, may create or verify the external A record after a separate confirmation. Deploy renders and submits the live Nomad job, waits for a healthy allocation, and requires its own confirmation because it can replace a running workload.</p></div>
         </details>
         <details>
           <summary>What does Resource Utilization show?</summary>
@@ -805,7 +816,7 @@
         </details>
         <details>
           <summary>What is intentionally unsupported?</summary>
-          <div class="faq-answer"><p>The current app form does not store secrets, environment variables, private-registry credentials, persistent volumes, or arbitrary Nomad configuration. It also does not create cloud instances or DNS records. These require separate secure lifecycle support.</p></div>
+          <div class="faq-answer"><p>The current app form does not store secrets, environment variables, private-registry credentials, persistent volumes, arbitrary Nomad configuration, or create cloud instances. Managed DNS currently supports safe Netlify A-record creation only; it does not edit or delete conflicting records.</p></div>
         </details>
       </div>
       <div class="faq-footer">
@@ -866,6 +877,8 @@
     const appCancel = document.getElementById("app-cancel");
     const appSubmit = document.getElementById("app-submit");
     const appNode = document.getElementById("app-node");
+    const appManageDNS = document.getElementById("app-manage-dns");
+    const appDNSNote = document.getElementById("app-dns-note");
     const appError = document.getElementById("app-error");
     const reservationsBody = document.getElementById("reservations-body");
     const resourceGrid = document.getElementById("resource-grid");
@@ -897,6 +910,7 @@
     let actionRunning = false;
     let agentConnected = false;
     let latestConfig = {};
+    let latestDNS = {};
     let latencyHistory = [];
 
     try {
@@ -915,6 +929,7 @@
       const state = data.State || data.state || {};
       const system = data.System || data.system || {};
       const resources = data.Resources || data.resources || [];
+      const dns = data.DNS || data.dns || {};
       const nodes = (config.Nodes || []).map((node) => ({
         Name: node.Name, Provider: node.Provider, Role: node.Role,
         PublicIP: node.PublicIP, OverlayIP: node.OverlayIP
@@ -922,14 +937,16 @@
       const apps = (config.Apps || []).map((app) => ({
         Name: app.Name, Image: app.Image, Domain: app.Domain, Port: app.Port,
         PreferNode: app.PreferNode, AllowWorkers: app.AllowWorkers,
-        CPU: app.CPU, MemoryMB: app.MemoryMB, HealthPath: app.HealthPath
+        CPU: app.CPU, MemoryMB: app.MemoryMB, HealthPath: app.HealthPath,
+        ManageDNS: Boolean(app.ManageDNS)
       }));
       const nodeState = Object.fromEntries(Object.entries(state.Nodes || {}).map(([name, value]) => [name, {
         Frozen: Boolean(value.Frozen), Draining: Boolean(value.Draining),
         Joined: Boolean(value.Joined), ReservedFor: value.ReservedFor || ""
       }]));
       const appState = Object.fromEntries(Object.entries(state.Apps || {}).map(([name, value]) => [name, {
-        Node: value.Node || "", Status: value.Status || ""
+        Node: value.Node || "", Status: value.Status || "",
+        DNSStatus: value.DNSStatus || "", DNSMessage: value.DNSMessage || ""
       }]));
       return {
         Config: { Name: config.Name || "", Nodes: nodes, Apps: apps },
@@ -938,6 +955,10 @@
           nomad: system.nomad || system.Nomad || "",
           traefik: system.traefik || system.Traefik || "",
           wireguard: system.wireguard || system.WireGuard || ""
+        },
+        DNS: {
+          provider: dns.provider || "", zone: dns.zone || "",
+          targetIPv4: dns.targetIPv4 || "", configured: Boolean(dns.configured)
         },
         Resources: resources.map((resource) => ({
           name: resource.name || "", status: resource.status || "",
@@ -993,7 +1014,7 @@
       const text = value || "unknown";
       const normalized = String(text).toLowerCase();
       const ok = ["active", "deployed", "ready", "joined", "200 ok", "healthy"].includes(normalized);
-      const warn = ["locked", "frozen", "draining", "reserved", "unknown", "configured"].includes(normalized);
+      const warn = ["locked", "frozen", "draining", "reserved", "unknown", "configured", "manual", "pending", "unconfigured"].includes(normalized);
       return pill(text, ok ? "ok" : warn ? "warn" : "bad");
     }
 
@@ -1073,7 +1094,7 @@
       wireguardState.textContent = "locked";
       controlSummary.textContent = "locked";
       workerSummary.textContent = "locked";
-      appsBody.innerHTML = `<tr><td colspan="7" class="muted">Unlock to load live apps.</td></tr>`;
+      appsBody.innerHTML = `<tr><td colspan="8" class="muted">Unlock to load live apps.</td></tr>`;
       reservationsBody.innerHTML = `<tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>`;
       resourceGrid.innerHTML = `<div class="empty">Unlock to load node resources.</div>`;
       resourceMode.textContent = "Agent locked";
@@ -1084,7 +1105,9 @@
 
     function setUnlocked(unlocked) {
       agentConnected = unlocked;
-      document.querySelectorAll("[data-action]").forEach((button) => { button.disabled = !unlocked || actionRunning; });
+      document.querySelectorAll("[data-action]").forEach((button) => {
+        button.disabled = !unlocked || actionRunning || button.dataset.requiresDns === "true";
+      });
       tokenInput.hidden = unlocked;
       saveToken.hidden = unlocked;
       lockAgent.hidden = !unlocked;
@@ -1178,6 +1201,7 @@
       return {
         "control-status": "Control status",
         "app-deploy": `Deploy ${name || "app"}`,
+        "app-dns-sync": `Check DNS for ${name || "app"}`,
         "node-reserve": `Reserve ${name}`,
         "node-release": `Release ${name}`,
         "node-cancel-drain": `Cancel drain on ${name}`
@@ -1200,6 +1224,7 @@
       const state = data.State || data.state || {};
       const system = data.System || data.system || {};
       latestConfig = config;
+      latestDNS = data.DNS || data.dns || {};
       nomadState.innerHTML = statePill(system.nomad || system.Nomad);
       traefikState.innerHTML = statePill(system.traefik || system.Traefik);
       wireguardState.innerHTML = statePill(system.wireguard || system.WireGuard);
@@ -1209,16 +1234,23 @@
       appsBody.innerHTML = configuredApps.map((app) => {
         const live = appState[app.Name] || {};
         const domain = app.Domain ? `<a href="https://${escapeHTML(app.Domain)}/" target="_blank" rel="noreferrer">${escapeHTML(app.Domain)}</a>` : "";
+        const dnsStatus = live.DNSStatus || (app.ManageDNS ? "pending" : "manual");
+        const dnsMessage = live.DNSMessage || (app.ManageDNS ? "Managed DNS has not been verified." : "DNS is managed outside Myprod.");
+        const dnsReady = !app.ManageDNS || dnsStatus === "ready";
         return `<tr>
           <td><strong>${escapeHTML(app.Name)}</strong></td>
           <td class="mono">${escapeHTML(app.Image)}</td>
           <td>${domain}</td>
+          <td title="${escapeHTML(dnsMessage)}">${statePill(dnsStatus)}</td>
           <td>${escapeHTML(live.Node || app.PreferNode || "auto")}</td>
           <td>${escapeHTML(app.CPU || 500)} MHz · ${escapeHTML(app.MemoryMB || 512)} MB</td>
           <td>${statePill(live.Status || "configured")}</td>
-          <td><button data-action="app-deploy" data-name="${escapeHTML(app.Name)}">Deploy</button></td>
+          <td><div class="actions">
+            ${app.ManageDNS && !dnsReady ? `<button data-action="app-dns-sync" data-name="${escapeHTML(app.Name)}">Check DNS</button>` : ""}
+            <button data-action="app-deploy" data-name="${escapeHTML(app.Name)}" data-requires-dns="${dnsReady ? "false" : "true"}" ${dnsReady ? "" : "disabled"}>Deploy</button>
+          </div></td>
         </tr>`;
-      }).join("") || `<tr><td colspan="7" class="muted">No apps configured.</td></tr>`;
+      }).join("") || `<tr><td colspan="8" class="muted">No apps configured.</td></tr>`;
 
       renderResources(data.resources || data.Resources || []);
 
@@ -1314,7 +1346,7 @@
       actionRunning = active;
       output.setAttribute("aria-busy", String(active));
       document.querySelectorAll("[data-action]").forEach((candidate) => {
-        candidate.disabled = active || !agentConnected;
+        candidate.disabled = active || !agentConnected || candidate.dataset.requiresDns === "true";
         if (!active) candidate.classList.remove("is-loading");
       });
       addApp.disabled = active || !agentConnected;
@@ -1328,6 +1360,12 @@
           body: "This submits or updates a live Nomad workload and may replace its running allocation.",
           warning: "Are you sure? Public traffic can be affected while the replacement becomes healthy.",
           label: "Deploy"
+        },
+        "app-dns-sync": {
+          title: `Create or verify DNS for ${name}?`,
+          body: "Myprod will call Netlify DNS and ensure this app hostname has an A record pointing to Oracle ingress.",
+          warning: "Are you sure? This can create an external DNS record. Existing conflicting A, AAAA, or CNAME records will not be overwritten.",
+          label: "Create / verify DNS"
         },
         "node-freeze": {
           title: `Freeze ${name}?`,
@@ -1428,7 +1466,7 @@
     function bindActionButtons() {
       const unlocked = agentConnected;
       document.querySelectorAll("[data-action]").forEach((button) => {
-        button.disabled = !unlocked || actionRunning;
+        button.disabled = !unlocked || actionRunning || button.dataset.requiresDns === "true";
         if (button.dataset.bound === "true") return;
         button.dataset.bound = "true";
         button.addEventListener("click", () => runAction(button));
@@ -1448,6 +1486,11 @@
     function openAppDialog() {
       const nodes = latestConfig.Nodes || [];
       appNode.innerHTML = nodes.map((node) => `<option value="${escapeHTML(node.Name)}">${escapeHTML(node.Name)} · ${escapeHTML(node.Provider || node.Role || "node")}</option>`).join("");
+      appManageDNS.disabled = !latestDNS.configured;
+      appManageDNS.checked = Boolean(latestDNS.configured);
+      appDNSNote.textContent = latestDNS.configured
+        ? `Netlify DNS is configured for ${latestDNS.zone}; records point to ${latestDNS.targetIPv4}.`
+        : "DNS automation is unavailable until Netlify credentials are configured on Oracle. You may register with externally managed DNS.";
       appError.textContent = "";
       appDialog.showModal();
       document.getElementById("app-name").focus();
@@ -1465,8 +1508,13 @@
         AllowWorkers: false,
         CPU: Number(appForm.elements.cpu.value),
         MemoryMB: Number(appForm.elements.memory.value),
-        HealthPath: appForm.elements.health.value.trim()
+        HealthPath: appForm.elements.health.value.trim(),
+        ManageDNS: appManageDNS.checked
       };
+      if (app.ManageDNS) {
+        const confirmed = await confirmPowerfulAction("app-dns-sync", app.Name);
+        if (confirmed === null) return;
+      }
       appError.textContent = "";
       appSubmit.disabled = true;
       appSubmit.classList.add("is-loading");

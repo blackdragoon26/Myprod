@@ -37,6 +37,13 @@ Project reservation validates a constrained project ID, refuses the control plan
 
 Hosted application registration accepts only constrained identifiers, registry image references, DNS hostnames, numeric resource limits, exact configured node names, and restricted health-check paths. These values are rendered into Nomad HCL, so newline, quote, shell, and HCL interpolation characters are rejected before persistence. Registration never deploys automatically.
 
+Managed DNS credentials exist only in Oracle's root-readable
+`/etc/poolctl-agent.env`. The hosted browser receives a capability flag, zone,
+and ingress target, never the Netlify token. DNS automation performs only an
+idempotent exact-host A-record create/verify operation. It refuses the zone apex,
+hostnames outside the configured zone, and any conflicting A, AAAA, or CNAME
+record. Record deletion remains manual.
+
 The current form is not a secret-management surface. Public image references are required, and credentials must not be entered into application fields. Private registry credentials, runtime secrets, and environment variables require an encrypted storage and redaction design before they can be exposed through the hosted dashboard.
 
 The hosted dashboard may retain a sanitized last-successful status snapshot in

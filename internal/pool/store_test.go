@@ -125,8 +125,10 @@ func TestStateTransitions(t *testing.T) {
 		t.Fatal("expected unfrozen node")
 	}
 	state.SetApp("sample-api", "oracle-main", "deployed")
-	if state.Apps["sample-api"].Node != "oracle-main" || state.Apps["sample-api"].Status != "deployed" {
-		t.Fatal("expected app deployment state")
+	state.SetAppDNS("sample-api", "ready", "A record resolves")
+	state.SetApp("sample-api", "do-worker-1", "deployed")
+	if app := state.Apps["sample-api"]; app.Node != "do-worker-1" || app.Status != "deployed" || app.DNSStatus != "ready" {
+		t.Fatalf("deployment update must preserve DNS state: %#v", app)
 	}
 	state.SetJoined("oracle-main", true)
 	if !state.Nodes["oracle-main"].Joined {
@@ -150,6 +152,16 @@ func TestReservationRoundTrip(t *testing.T) {
 	got := roundTrip.Nodes["worker-1"]
 	if !got.Frozen || !got.Joined || got.ReservedFor != "project-alpha" {
 		t.Fatalf("reservation round trip = %#v", got)
+	}
+}
+
+func TestAppDNSStateRoundTrip(t *testing.T) {
+	state := State{Apps: map[string]AppState{
+		"example-api": {Node: "worker-1", Status: "configured", DNSStatus: "pending", DNSMessage: "public propagation pending"},
+	}}
+	got := parseState(formatState(state)).Apps["example-api"]
+	if got.DNSStatus != "pending" || got.DNSMessage != "public propagation pending" {
+		t.Fatalf("DNS state round trip = %#v", got)
 	}
 }
 
@@ -320,7 +332,7 @@ func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
 	}
 	app := App{
 		Name: "example-api", Image: "ghcr.io/example/api:abc123", Domain: "example-api.example.com",
-		Port: 8080, PreferNode: "oracle-main", CPU: 750, MemoryMB: 768, HealthPath: "/healthz",
+		Port: 8080, PreferNode: "oracle-main", CPU: 750, MemoryMB: 768, HealthPath: "/healthz", ManageDNS: true,
 	}
 	if err := store.AddApp(app); err != nil {
 		t.Fatal(err)
@@ -333,10 +345,10 @@ func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
 	if !ok {
 		t.Fatal("registered app was not persisted")
 	}
-	if got.CPU != 750 || got.MemoryMB != 768 || got.HealthPath != "/healthz" {
+	if got.CPU != 750 || got.MemoryMB != 768 || got.HealthPath != "/healthz" || !got.ManageDNS {
 		t.Fatalf("persisted app = %#v", got)
 	}
-	if live := state.Apps["example-api"]; live.Status != "configured" || live.Node != "oracle-main" {
+	if live := state.Apps["example-api"]; live.Status != "configured" || live.Node != "oracle-main" || live.DNSStatus != "pending" {
 		t.Fatalf("app state = %#v", live)
 	}
 }

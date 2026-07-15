@@ -104,6 +104,7 @@ required secrets: none
 ```
 
 The image and digest are deliberately omitted until a CI publication run proves
-them. DNS is an operator step; the recommended backend hostname is
-`splidt-api.sankalpjha.dev`, pointing to Oracle ingress `140.245.5.201`.
-
+them. DNS remains an operator-controlled step, but Myprod can now create and
+verify the Netlify A record during registration. The recommended backend
+hostname is `splidt-api.sankalpjha.dev`, pointing to Oracle ingress
+`140.245.5.201`.

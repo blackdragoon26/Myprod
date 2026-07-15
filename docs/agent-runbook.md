@@ -222,7 +222,8 @@ Preflight requirements:
 - publish an immutable public container image for the target architecture;
 - make the service listen on `0.0.0.0` and record its container port;
 - expose an unauthenticated health endpoint that returns HTTP 2xx;
-- point the chosen application hostname to Oracle public IP `140.245.5.201`;
+- either configure Netlify automation on Oracle or point the chosen application
+  hostname to Oracle public IP `140.245.5.201` externally;
 - choose an exact target node with enough available CPU, memory, and disk;
 - verify the target is joined, eligible, not draining, and not reserved.
 
@@ -232,15 +233,21 @@ From the hosted dashboard:
 2. Review **Resource Utilization**. CPU, memory, and root disk are actual host measurements from Nomad client stats.
 3. Select **Add application** under **Managed Apps**.
 4. Enter the app name, public image, domain, target node, container port, CPU reservation, memory reservation, and health path.
-5. Select **Register application**. This persists configuration only and does not start the container.
-6. Confirm the application appears with status `configured` and review its target and reservations.
-7. Select **Deploy**, read the live-workload warning, and confirm.
-8. Wait for Agent Output to report a healthy Nomad allocation on the selected node.
-9. Refresh and verify the app status is `deployed`, then test its public HTTPS URL.
+5. Keep **Create and verify DNS automatically** enabled for a hostname in the configured Netlify zone. Disable it only when DNS is managed externally.
+6. Select **Register application** and confirm the external DNS mutation when prompted. Registration persists configuration and may create the A record, but it does not start the container.
+7. Confirm the application appears with status `configured`; review its target, reservations, and DNS state.
+8. If DNS is `pending`, wait for propagation and select **Check DNS**. Stop on `conflict`; Myprod will not overwrite the existing record.
+9. When DNS is `ready` or `manual`, select **Deploy**, read the live-workload warning, and confirm.
+10. Wait for Agent Output to report a healthy Nomad allocation on the selected node.
+11. Refresh and verify the app status is `deployed`, then test its public HTTPS URL.
 
 Do not enter secrets or private-registry credentials. This release supports public images and ephemeral container filesystems only; it does not yet model environment variables, encrypted secrets, persistent volumes, application deletion, or configuration edits.
 
 Registration uses exact-node placement. This constrains one app without reserving the entire worker, so unrelated Nomad applications can share remaining capacity.
+
+Netlify credential installation and recovery procedures are in
+[netlify-dns.md](netlify-dns.md). Never paste the Netlify token into the
+dashboard, application fields, repository, or agent output.
 
 ## 9. Reserve A Worker For A Project
 

@@ -36,6 +36,7 @@ type App struct {
 	CPU          int
 	MemoryMB     int
 	HealthPath   string
+	ManageDNS    bool
 }
 
 type State struct {
@@ -51,8 +52,10 @@ type NodeState struct {
 }
 
 type AppState struct {
-	Node   string
-	Status string
+	Node       string
+	Status     string
+	DNSStatus  string
+	DNSMessage string
 }
 
 func (c Config) HasNode(name string) bool {
@@ -132,7 +135,18 @@ func (s *State) SetReserved(name, project string) {
 
 func (s *State) SetApp(name, node, status string) {
 	s.ensure()
-	s.Apps[name] = AppState{Node: node, Status: status}
+	app := s.Apps[name]
+	app.Node = node
+	app.Status = status
+	s.Apps[name] = app
+}
+
+func (s *State) SetAppDNS(name, status, message string) {
+	s.ensure()
+	app := s.Apps[name]
+	app.DNSStatus = status
+	app.DNSMessage = message
+	s.Apps[name] = app
 }
 
 func (s *State) ensure() {

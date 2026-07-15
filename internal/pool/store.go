@@ -112,10 +112,30 @@ func (s Store) AddApp(app App) error {
 	}
 	cfg.Apps = append(cfg.Apps, app)
 	state.ensure()
-	state.Apps[app.Name] = AppState{Node: app.PreferNode, Status: "configured"}
+	dnsStatus := "manual"
+	if app.ManageDNS {
+		dnsStatus = "pending"
+	}
+	state.Apps[app.Name] = AppState{Node: app.PreferNode, Status: "configured", DNSStatus: dnsStatus}
 	if err := os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o644); err != nil {
 		return err
 	}
+	return s.SaveState(state)
+}
+
+func (s Store) SetAppDNS(name, status, message string) error {
+	cfg, state, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if _, ok := cfg.FindApp(name); !ok {
+		return fmt.Errorf("unknown app %q", name)
+	}
+	message = strings.Join(strings.Fields(message), " ")
+	if len(message) > 240 {
+		message = message[:240]
+	}
+	state.SetAppDNS(name, status, message)
 	return s.SaveState(state)
 }
 
@@ -399,6 +419,8 @@ func applyAppField(app *App, line string) {
 		app.MemoryMB = atoi(value(line))
 	case strings.HasPrefix(line, "health_path:"):
 		app.HealthPath = value(line)
+	case strings.HasPrefix(line, "manage_dns:"):
+		app.ManageDNS = value(line) == "true"
 	}
 }
 
@@ -453,6 +475,12 @@ func parseState(raw string) State {
 			if strings.HasPrefix(trimmed, "status:") {
 				app.Status = value(trimmed)
 			}
+			if strings.HasPrefix(trimmed, "dns_status:") {
+				app.DNSStatus = value(trimmed)
+			}
+			if strings.HasPrefix(trimmed, "dns_message:") {
+				app.DNSMessage = value(trimmed)
+			}
 			state.Apps[current] = app
 		}
 	}
@@ -476,6 +504,8 @@ func formatState(state State) string {
 		b.WriteString(fmt.Sprintf("  - name: %s\n", name))
 		b.WriteString(fmt.Sprintf("    node: %s\n", app.Node))
 		b.WriteString(fmt.Sprintf("    status: %s\n", app.Status))
+		b.WriteString(fmt.Sprintf("    dns_status: %s\n", app.DNSStatus))
+		b.WriteString(fmt.Sprintf("    dns_message: %s\n", app.DNSMessage))
 	}
 	return b.String()
 }
@@ -535,6 +565,7 @@ func formatConfig(cfg Config) string {
 		b.WriteString(fmt.Sprintf("      cpu: %d\n", app.CPU))
 		b.WriteString(fmt.Sprintf("      memory_mb: %d\n", app.MemoryMB))
 		b.WriteString(fmt.Sprintf("    health_path: %s\n", app.HealthPath))
+		b.WriteString(fmt.Sprintf("    manage_dns: %t\n", app.ManageDNS))
 	}
 	return b.String()
 }
@@ -582,6 +613,7 @@ apps:
       cpu: 500
       memory_mb: 512
     health_path: /
+    manage_dns: false
 `
 
 const defaultState = `nodes:

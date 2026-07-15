@@ -54,7 +54,8 @@ Verify all of the following:
 3. The process listens on `0.0.0.0`, not only `127.0.0.1`.
 4. The declared container port is correct.
 5. The health path is unauthenticated and returns HTTP 2xx.
-6. The hostname resolves to Oracle public IP `140.245.5.201`.
+6. Either managed Netlify DNS is configured on Oracle, or the externally
+   managed hostname already resolves to `140.245.5.201`.
 7. The target node is joined, eligible, not draining, and not reserved.
 8. Resource Utilization shows enough CPU, memory, and disk headroom.
 
@@ -72,17 +73,22 @@ digest. Do not deploy a mutable `latest` tag when reproducibility matters.
 - **CPU reservation** is scheduler capacity in MHz.
 - **Memory reservation** is scheduler capacity in MB.
 - **Health path** is the HTTP path Nomad checks before deployment is healthy.
+- **Create and verify DNS automatically** asks Oracle to manage an exact
+  Netlify A record for the hostname. Leave it off for externally managed DNS.
 
 CPU and memory values are reservations, not live process-usage measurements.
 
 ## Registration Versus Deployment
 
 **Register application** validates and persists configuration. It does not
-start or replace a container.
+start or replace a container. With managed DNS enabled, registration also
+creates or verifies the A record and records one of `ready`, `pending`,
+`conflict`, `error`, or `unconfigured`.
 
 **Deploy** renders the Nomad job, submits it to the live scheduler, and waits
 for a healthy allocation. It may replace a running allocation and therefore
-requires a separate confirmation.
+requires a separate confirmation. Deployment is blocked until managed DNS is
+`ready`; **Check DNS** retries creation or propagation verification.
 
 After deployment, refresh the dashboard and verify:
 
@@ -164,8 +170,7 @@ The app form intentionally does not support:
 - arbitrary Nomad HCL;
 - app editing or deletion;
 - cloud-instance creation;
-- DNS record creation.
+- DNS record deletion, non-A records, or DNS providers other than Netlify.
 
 Do not encode credentials in image names, hostnames, or health paths. These
 features require dedicated encrypted storage, redaction, and lifecycle design.
-

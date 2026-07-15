@@ -5,7 +5,7 @@
 ```txt
 User
   |
-Cloudflare DNS
+Netlify DNS
   |
 Oracle public IP
   |
@@ -32,7 +32,7 @@ V1 keeps public ingress on Oracle because it is easier to secure and reason abou
 - one public HTTP/HTTPS entrypoint
 - one place for TLS and routing
 - workers do not need public app ports
-- Cloudflare records do not need to change on every reschedule
+- DNS records do not need to change on every reschedule
 
 The tradeoff is that Oracle remains the bandwidth and ingress CPU bottleneck. Per-node ingress can be added later once the pool needs it.
 
@@ -81,12 +81,13 @@ V1 is intentionally SSH-first:
 ## Managed Application Lifecycle
 
 1. Build and publish an immutable public container image for the target architecture.
-2. Point the application's DNS hostname at Oracle's public ingress IP.
-3. Unlock the hosted dashboard and select **Add application**.
-4. Register the image, hostname, container port, health path, resource reservations, and exact target node.
+2. Unlock the hosted dashboard and select **Add application**.
+3. Register the image, hostname, container port, health path, resource reservations, exact target node, and DNS ownership mode.
+4. For managed DNS, Oracle creates or verifies the Netlify A record and waits briefly for public resolution. Conflicts are reported and never overwritten.
 5. Registration writes Oracle's agent configuration but does not start a workload.
-6. Review the configured row, select **Deploy**, and confirm the live Nomad update.
-7. The agent submits the rendered job and reports success only after a healthy allocation is running on the selected node.
+6. Review the configured row. If DNS is pending, use **Check DNS** after propagation.
+7. Select **Deploy** and confirm the live Nomad update. Managed applications cannot deploy until DNS is `ready`.
+8. The agent submits the rendered job and reports success only after a healthy allocation is running on the selected node.
 
 Exact-node placement makes architecture and capacity decisions explicit. It does not reserve the whole node; other Nomad workloads may share that node. Whole-machine reservations remain a separate mechanism for privileged host-level work.
 

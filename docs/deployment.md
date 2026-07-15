@@ -67,6 +67,11 @@ For an agent change:
 
 Never place `POOLCTL_AGENT_TOKEN` in a build command, repository file, shell history, or deployment log.
 
+Managed DNS additionally reads `NETLIFY_AUTH_TOKEN`, `MYPROD_DNS_ZONE`, and
+`MYPROD_INGRESS_IPV4` from Oracle's root-readable agent environment. These are
+runtime configuration and must never be supplied to Vercel or committed. Follow
+[netlify-dns.md](netlify-dns.md) for the one-time installation and verification.
+
 ## Manual Deploy
 
 Manual deploys are useful for quick iteration, but they are not the long-term source of truth. Production should be Git-driven so the deployed dashboard always matches `main`.
