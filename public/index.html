@@ -148,13 +148,13 @@
     .auth-result.bad { color: var(--bad); }
 
     /* ---------- Inputs & buttons ---------- */
-    input, button {
+    input, select, button {
       height: 36px;
       border-radius: var(--radius-sm);
       font: inherit;
       transition: background-color .15s ease, border-color .15s ease, color .15s ease;
     }
-    input {
+    input, select {
       width: min(190px, 100%);
       border: 1px solid var(--border);
       background: var(--surface);
@@ -162,7 +162,7 @@
       padding: 0 12px;
     }
     input::placeholder { color: var(--text-subtle); }
-    input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent); }
+    input:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 18%, transparent); }
 
     button {
       border: 1px solid var(--border);
@@ -199,6 +199,8 @@
     /* ---------- Confirmation dialog ---------- */
     dialog {
       width: min(480px, calc(100vw - 32px));
+      max-height: calc(100vh - 24px);
+      overflow: auto;
       padding: 0;
       color: var(--text);
       background: var(--surface);
@@ -225,6 +227,20 @@
     .confirm-field input { width: 100%; }
     .confirm-error { min-height: 18px; margin-top: 6px; color: var(--bad); font-size: 12px; }
     .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+    .app-dialog { width: min(720px, calc(100vw - 32px)); }
+    .app-form { padding: 20px; }
+    .app-form-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    .app-form-head h2 { color: var(--text); font-size: 17px; letter-spacing: 0; text-transform: none; }
+    .app-form-head p { margin-top: 5px; color: var(--text-muted); font-size: 12px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .field { display: grid; gap: 6px; min-width: 0; }
+    .field.wide { grid-column: 1 / -1; }
+    .field label { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .field input, .field select { width: 100%; }
+    .form-note { margin-top: 16px; padding: 10px 12px; color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius-sm); font-size: 12px; }
+    .form-error { min-height: 18px; margin-top: 8px; color: var(--bad); font-size: 12px; }
+    .form-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 12px; background: var(--surface); }
 
     /* ---------- Cards ---------- */
     .card {
@@ -340,6 +356,7 @@
     table { width: 100%; border-collapse: collapse; }
     .table-wrap { width: 100%; overflow-x: auto; }
     .table-wrap table { min-width: 520px; }
+    #apps .table-wrap:first-of-type table { min-width: 920px; }
     th, td { padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
     th { color: var(--text-muted); font-size: 11px; text-transform: uppercase; font-weight: 500; letter-spacing: .04em; }
     tr:last-child td { border-bottom: 0; }
@@ -373,6 +390,19 @@
     .node-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
     .node-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
     .node-actions button { height: 30px; padding: 0 10px; font-size: 12px; }
+
+    /* ---------- Resource telemetry ---------- */
+    .resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .resource-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; min-width: 0; }
+    .resource-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+    .resource-metrics { display: grid; gap: 12px; }
+    .resource-line { display: grid; gap: 6px; }
+    .resource-copy { display: flex; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: 11px; }
+    .resource-copy strong { color: var(--text); font-weight: 600; }
+    .meter { height: 7px; overflow: hidden; background: var(--surface-3); border-radius: 4px; }
+    .meter > span { display: block; height: 100%; width: 0; background: var(--ok); border-radius: inherit; }
+    .meter > span.warn { background: var(--warn); }
+    .meter > span.bad { background: var(--bad); }
 
     /* ---------- Output ---------- */
     pre {
@@ -439,7 +469,8 @@
       .auth-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-column: 1 / -1; }
       .auth-controls input { width: 100%; }
       .auth-result { grid-column: 1 / -1; }
-      .summary-row, .status-grid { grid-template-columns: 1fr; }
+      .summary-row, .status-grid, .resource-grid, .form-grid { grid-template-columns: 1fr; }
+      .field.wide { grid-column: auto; }
       .card, .hero-main, .assistant-panel { padding: 14px; }
       .node-card { grid-template-columns: 1fr; }
       .node-actions { justify-content: flex-start; }
@@ -527,7 +558,6 @@
             </div>
             <div class="actions">
               <button class="accent" data-action="control-status" disabled>Control status</button>
-              <button data-action="app-deploy" data-name="sample-api" disabled>Deploy sample-api</button>
             </div>
           </div>
         </section>
@@ -564,15 +594,28 @@
             </div>
           </section>
 
-          <section id="apps" class="span-7 card">
+          <section id="resources" class="span-12 card">
+            <div class="card-head">
+              <h2>Resource Utilization</h2>
+              <span class="pill plain muted">Live Nomad client stats</span>
+            </div>
+            <div id="resource-grid" class="resource-grid">
+              <div class="empty">Unlock to load node resources.</div>
+            </div>
+          </section>
+
+          <section id="apps" class="span-12 card">
             <div class="card-head">
               <h2>Managed Apps</h2>
-              <span id="deploy-capability" class="pill warn">locked</span>
+              <div class="actions">
+                <span id="deploy-capability" class="pill warn">locked</span>
+                <button id="add-app" type="button" disabled>Add application</button>
+              </div>
             </div>
             <div class="table-wrap"><table>
-              <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Status</th></tr></thead>
+              <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>Node</th><th>Reservation</th><th>Status</th><th>Action</th></tr></thead>
               <tbody id="apps-body">
-                <tr><td colspan="5" class="muted">Unlock to load live apps.</td></tr>
+                <tr><td colspan="7" class="muted">Unlock to load live apps.</td></tr>
               </tbody>
             </table></div>
             <div class="inventory-section">
@@ -597,14 +640,14 @@
             </div>
           </section>
 
-          <section id="actions" class="span-5 card">
+          <section id="actions" class="span-7 card">
             <div class="card-head"><h2>Node Actions</h2></div>
             <div id="node-actions" class="node-cards">
               <div class="empty">Unlock to load node controls.</div>
             </div>
           </section>
 
-          <section class="span-7 card">
+          <section class="span-12 card">
             <div class="card-head">
               <h2>Agent Output</h2>
               <button id="copy-output">Copy</button>
@@ -639,6 +682,58 @@
         <button id="confirmation-accept" type="button" class="danger">Confirm</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="app-dialog" class="app-dialog" aria-labelledby="app-dialog-title">
+    <form id="app-form" class="app-form">
+      <div class="app-form-head">
+        <div>
+          <h2 id="app-dialog-title">Add application</h2>
+          <p>Register a public container image. Deployment remains a separate action.</p>
+        </div>
+        <button id="app-close" class="icon" type="button" aria-label="Close" title="Close">&times;</button>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="app-name">Name</label>
+          <input id="app-name" name="name" required pattern="[A-Za-z0-9_-]+" maxlength="64" placeholder="service-api" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="app-domain">Domain</label>
+          <input id="app-domain" name="domain" required maxlength="253" placeholder="api.example.com" autocomplete="off">
+        </div>
+        <div class="field wide">
+          <label for="app-image">Container image</label>
+          <input id="app-image" name="image" required maxlength="255" placeholder="ghcr.io/org/service:commit" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="app-node">Target node</label>
+          <select id="app-node" name="node" required></select>
+        </div>
+        <div class="field">
+          <label for="app-port">Container port</label>
+          <input id="app-port" name="port" type="number" min="1" max="65535" value="8080" required>
+        </div>
+        <div class="field">
+          <label for="app-cpu">CPU reservation (MHz)</label>
+          <input id="app-cpu" name="cpu" type="number" min="100" max="16000" step="100" value="500" required>
+        </div>
+        <div class="field">
+          <label for="app-memory">Memory reservation (MB)</label>
+          <input id="app-memory" name="memory" type="number" min="64" max="65536" step="64" value="512" required>
+        </div>
+        <div class="field wide">
+          <label for="app-health">Health path</label>
+          <input id="app-health" name="health" required maxlength="256" value="/" autocomplete="off">
+        </div>
+      </div>
+      <div class="form-note">Public images only. Secrets, environment variables, and persistent volumes are not stored by this release.</div>
+      <div id="app-error" class="form-error" role="alert"></div>
+      <div class="form-actions">
+        <button id="app-cancel" type="button">Cancel</button>
+        <button id="app-submit" class="primary" type="submit">Register application</button>
+      </div>
+    </form>
   </dialog>
 
   <script>
@@ -685,7 +780,16 @@
     const copyOutput = document.getElementById("copy-output");
     const agentState = document.getElementById("agent-state");
     const appsBody = document.getElementById("apps-body");
+    const addApp = document.getElementById("add-app");
+    const appDialog = document.getElementById("app-dialog");
+    const appForm = document.getElementById("app-form");
+    const appClose = document.getElementById("app-close");
+    const appCancel = document.getElementById("app-cancel");
+    const appSubmit = document.getElementById("app-submit");
+    const appNode = document.getElementById("app-node");
+    const appError = document.getElementById("app-error");
     const reservationsBody = document.getElementById("reservations-body");
+    const resourceGrid = document.getElementById("resource-grid");
     const nodeList = document.getElementById("node-list");
     const nodeActions = document.getElementById("node-actions");
     const nomadState = document.getElementById("nomad-state");
@@ -706,6 +810,7 @@
     const confirmationAccept = document.getElementById("confirmation-accept");
     const AGENT = "https://api.sankalpjha.dev/__poolctl/api";
     let actionRunning = false;
+    let latestConfig = {};
     let latencyHistory = [];
 
     try {
@@ -742,6 +847,49 @@
       return pill(text, ok ? "ok" : warn ? "warn" : "bad");
     }
 
+    function formatBytes(value) {
+      const bytes = Number(value);
+      if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+      const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+      const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+      return `${(bytes / (1024 ** index)).toFixed(index > 1 ? 1 : 0)} ${units[index]}`;
+    }
+
+    function boundedPercent(value) {
+      return Math.max(0, Math.min(100, Number(value) || 0));
+    }
+
+    function meterTone(value) {
+      return value >= 90 ? "bad" : value >= 75 ? "warn" : "";
+    }
+
+    function metric(label, usedLabel, availableLabel, percent) {
+      const used = boundedPercent(percent);
+      return `<div class="resource-line">
+        <div class="resource-copy"><strong>${escapeHTML(label)} · ${used.toFixed(1)}%</strong><span>${escapeHTML(usedLabel)} · ${escapeHTML(availableLabel)} available</span></div>
+        <div class="meter" role="meter" aria-label="${escapeHTML(label)} usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${used.toFixed(1)}"><span class="${meterTone(used)}" style="width:${used}%"></span></div>
+      </div>`;
+    }
+
+    function renderResources(resources) {
+      resourceGrid.innerHTML = resources.map((resource) => {
+        if (resource.error) {
+          return `<article class="resource-card"><div class="resource-head"><h3>${escapeHTML(resource.name || "Nomad")}</h3>${statePill("unavailable")}</div><p class="muted">${escapeHTML(resource.error)}</p></article>`;
+        }
+        const cpu = boundedPercent(resource.cpuUsedPercent);
+        const memory = boundedPercent(resource.memoryUsedPercent);
+        const disk = boundedPercent(resource.diskUsedPercent);
+        return `<article class="resource-card">
+          <div class="resource-head"><h3>${escapeHTML(resource.name)}</h3>${statePill(resource.status || "unknown")}</div>
+          <div class="resource-metrics">
+            ${metric("CPU", `${cpu.toFixed(1)}% used`, `${(100 - cpu).toFixed(1)}%`, cpu)}
+            ${metric("Memory", `${formatBytes(resource.memoryUsedBytes)} used`, formatBytes(resource.memoryAvailableBytes), memory)}
+            ${metric("Root disk", `${formatBytes(resource.diskUsedBytes)} used`, formatBytes(resource.diskAvailableBytes), disk)}
+          </div>
+        </article>`;
+      }).join("") || `<div class="empty">No live resource samples are available.</div>`;
+    }
+
     function markUpdated(value) {
       const date = value ? new Date(value) : new Date();
       if (Number.isNaN(date.getTime())) return;
@@ -773,8 +921,9 @@
       wireguardState.textContent = "locked";
       controlSummary.textContent = "locked";
       workerSummary.textContent = "locked";
-      appsBody.innerHTML = `<tr><td colspan="5" class="muted">Unlock to load live apps.</td></tr>`;
+      appsBody.innerHTML = `<tr><td colspan="7" class="muted">Unlock to load live apps.</td></tr>`;
       reservationsBody.innerHTML = `<tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>`;
+      resourceGrid.innerHTML = `<div class="empty">Unlock to load node resources.</div>`;
       nodeList.innerHTML = `<div class="empty">Unlock to load live nodes.</div>`;
       nodeActions.innerHTML = `<div class="empty">Unlock to load node controls.</div>`;
     }
@@ -784,6 +933,7 @@
       tokenInput.hidden = unlocked;
       saveToken.hidden = unlocked;
       lockAgent.hidden = !unlocked;
+      addApp.disabled = !unlocked || actionRunning;
       agentState.textContent = unlocked ? "agent connected" : "agent locked";
       agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
       for (const id of ["deploy-capability", "node-capability", "status-capability"]) {
@@ -871,7 +1021,7 @@
     function actionMessage(action, name, data) {
       const raw = (data.output || "").trim();
       if (action === "app-deploy") {
-        return `Deploy sample-api completed.\n\nNomad accepted the job. api.sankalpjha.dev should remain available.\n\n${raw || "No command output returned."}`;
+        return `Deploy ${name} completed.\n\nNomad accepted the job and verified a healthy allocation.\n\n${raw || "No command output returned."}`;
       }
       if (action === "control-status") {
         return `Control-plane services:\n${raw || "No command output returned."}`;
@@ -883,6 +1033,7 @@
       const config = data.Config || data.config || {};
       const state = data.State || data.state || {};
       const system = data.System || data.system || {};
+      latestConfig = config;
       nomadState.innerHTML = statePill(system.nomad || system.Nomad);
       traefikState.innerHTML = statePill(system.traefik || system.Traefik);
       wireguardState.innerHTML = statePill(system.wireguard || system.WireGuard);
@@ -897,9 +1048,13 @@
           <td class="mono">${escapeHTML(app.Image)}</td>
           <td>${domain}</td>
           <td>${escapeHTML(live.Node || app.PreferNode || "auto")}</td>
+          <td>${escapeHTML(app.CPU || 500)} MHz · ${escapeHTML(app.MemoryMB || 512)} MB</td>
           <td>${statePill(live.Status || "configured")}</td>
+          <td><button data-action="app-deploy" data-name="${escapeHTML(app.Name)}">Deploy</button></td>
         </tr>`;
-      }).join("") || `<tr><td colspan="5" class="muted">No apps configured.</td></tr>`;
+      }).join("") || `<tr><td colspan="7" class="muted">No apps configured.</td></tr>`;
+
+      renderResources(data.resources || data.Resources || []);
 
       const nodeState = state.Nodes || {};
       const configuredNodes = config.Nodes || [];
@@ -995,6 +1150,7 @@
         candidate.disabled = active || !agentToken();
         if (!active) candidate.classList.remove("is-loading");
       });
+      addApp.disabled = active || !agentToken();
       if (active && button) button.classList.add("is-loading");
     }
 
@@ -1112,6 +1268,54 @@
       });
     }
 
+    function closeAppDialog() {
+      appDialog.close();
+      appError.textContent = "";
+      appForm.reset();
+    }
+
+    function openAppDialog() {
+      const nodes = latestConfig.Nodes || [];
+      appNode.innerHTML = nodes.map((node) => `<option value="${escapeHTML(node.Name)}">${escapeHTML(node.Name)} · ${escapeHTML(node.Provider || node.Role || "node")}</option>`).join("");
+      appError.textContent = "";
+      appDialog.showModal();
+      document.getElementById("app-name").focus();
+    }
+
+    async function registerApplication(event) {
+      event.preventDefault();
+      if (!appForm.reportValidity()) return;
+      const app = {
+        Name: appForm.elements.name.value.trim(),
+        Image: appForm.elements.image.value.trim(),
+        Domain: appForm.elements.domain.value.trim().toLowerCase(),
+        Port: Number(appForm.elements.port.value),
+        PreferNode: appForm.elements.node.value,
+        AllowWorkers: false,
+        CPU: Number(appForm.elements.cpu.value),
+        MemoryMB: Number(appForm.elements.memory.value),
+        HealthPath: appForm.elements.health.value.trim()
+      };
+      appError.textContent = "";
+      appSubmit.disabled = true;
+      appSubmit.classList.add("is-loading");
+      setActionBusy(true);
+      output.textContent = `Registering ${app.Name}...`;
+      try {
+        const data = await agentFetch("/apps", { method: "POST", body: JSON.stringify(app) });
+        closeAppDialog();
+        output.textContent = `${(data.output || "Application registered.").trim()}\n\nRegistration changed configuration only. Use Deploy when the image and DNS are ready.`;
+        await refreshAgent({ silent: true });
+      } catch (error) {
+        appError.textContent = error.message;
+        output.textContent = `Application registration failed: ${error.message}`;
+      } finally {
+        setActionBusy(false);
+        appSubmit.disabled = false;
+        appSubmit.classList.remove("is-loading");
+      }
+    }
+
     async function unlockAgent() {
       const token = tokenInput.value.trim();
       if (!token) {
@@ -1170,6 +1374,11 @@
       if (event.key === "Enter") unlockAgent();
     });
     refresh.addEventListener("click", refreshAll);
+    addApp.addEventListener("click", openAppDialog);
+    appClose.addEventListener("click", closeAppDialog);
+    appCancel.addEventListener("click", closeAppDialog);
+    appDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeAppDialog(); });
+    appForm.addEventListener("submit", registerApplication);
     copyOutput.addEventListener("click", async () => {
       if (!output.textContent) return;
       try {

@@ -101,6 +101,24 @@ func (s Store) AddNode(node Node) error {
 	return s.SaveState(state)
 }
 
+func (s Store) AddApp(app App) error {
+	cfg, state, err := s.Load()
+	if err != nil {
+		return err
+	}
+	app = appWithDefaults(app)
+	if err := validateNewApp(cfg, app); err != nil {
+		return err
+	}
+	cfg.Apps = append(cfg.Apps, app)
+	state.ensure()
+	state.Apps[app.Name] = AppState{Node: app.PreferNode, Status: "configured"}
+	if err := os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o644); err != nil {
+		return err
+	}
+	return s.SaveState(state)
+}
+
 func (s Store) SetNodeJoined(name string, joined bool) error {
 	cfg, state, err := s.Load()
 	if err != nil {
@@ -141,6 +159,112 @@ func validateNewNode(cfg Config, node Node) error {
 		}
 	}
 	return nil
+}
+
+func validateNewApp(cfg Config, app App) error {
+	if len(app.Name) > 64 {
+		return errors.New("app name must be 64 characters or fewer")
+	}
+	if !safeID(app.Name) {
+		return errors.New("app name may contain only letters, numbers, dash, and underscore")
+	}
+	if _, ok := cfg.FindApp(app.Name); ok {
+		return fmt.Errorf("app %q already exists", app.Name)
+	}
+	if len(app.Image) > 255 || !safeImageReference(app.Image) {
+		return errors.New("image must be a registry reference without spaces or shell metacharacters")
+	}
+	if len(app.Domain) > 253 {
+		return errors.New("domain must be 253 characters or fewer")
+	}
+	if !validDomain(app.Domain) {
+		return errors.New("domain must be a hostname without a scheme, path, or port")
+	}
+	for _, existing := range cfg.Apps {
+		if strings.EqualFold(existing.Domain, app.Domain) {
+			return fmt.Errorf("domain %q is already used by %s", app.Domain, existing.Name)
+		}
+	}
+	if app.Port < 1 || app.Port > 65535 {
+		return errors.New("port must be between 1 and 65535")
+	}
+	if app.CPU < 100 || app.CPU > 16000 {
+		return errors.New("CPU must be between 100 and 16000 MHz")
+	}
+	if app.MemoryMB < 64 || app.MemoryMB > 65536 {
+		return errors.New("memory must be between 64 and 65536 MB")
+	}
+	if !validHealthPath(app.HealthPath) {
+		return errors.New("health path must start with / and contain no spaces, quotes, or backslashes")
+	}
+	if app.PreferNode == "" {
+		return errors.New("target node is required")
+	}
+	if !cfg.HasNode(app.PreferNode) {
+		return fmt.Errorf("unknown target node %q", app.PreferNode)
+	}
+	return nil
+}
+
+func appWithDefaults(app App) App {
+	if app.CPU == 0 {
+		app.CPU = 500
+	}
+	if app.MemoryMB == 0 {
+		app.MemoryMB = 512
+	}
+	if app.HealthPath == "" {
+		app.HealthPath = "/"
+	}
+	return app
+}
+
+func safeImageReference(raw string) bool {
+	if raw == "" || len(raw) > 255 {
+		return false
+	}
+	for _, r := range raw {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._/:@-", r) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validDomain(raw string) bool {
+	if raw == "" || len(raw) > 253 || strings.ContainsAny(raw, ":/ \\`\"") {
+		return false
+	}
+	labels := strings.Split(raw, ".")
+	if len(labels) < 2 {
+		return false
+	}
+	for _, label := range labels {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' {
+				continue
+			}
+			return false
+		}
+	}
+	return true
+}
+
+func validHealthPath(raw string) bool {
+	if !strings.HasPrefix(raw, "/") || len(raw) > 256 {
+		return false
+	}
+	for _, r := range raw {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("/-_.~?&=%:", r) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func safeID(raw string) bool {
@@ -269,6 +393,12 @@ func applyAppField(app *App, line string) {
 		app.PreferNode = value(line)
 	case strings.HasPrefix(line, "allow_workers:"):
 		app.AllowWorkers = value(line) == "true"
+	case strings.HasPrefix(line, "cpu:"):
+		app.CPU = atoi(value(line))
+	case strings.HasPrefix(line, "memory_mb:"):
+		app.MemoryMB = atoi(value(line))
+	case strings.HasPrefix(line, "health_path:"):
+		app.HealthPath = value(line)
 	}
 }
 
@@ -393,6 +523,7 @@ func formatConfig(cfg Config) string {
 	}
 	b.WriteString("\napps:\n")
 	for _, app := range cfg.Apps {
+		app = appWithDefaults(app)
 		b.WriteString(fmt.Sprintf("  - name: %s\n", app.Name))
 		b.WriteString(fmt.Sprintf("    image: %s\n", app.Image))
 		b.WriteString(fmt.Sprintf("    domain: %s\n", app.Domain))
@@ -400,6 +531,10 @@ func formatConfig(cfg Config) string {
 		b.WriteString("    placement:\n")
 		b.WriteString(fmt.Sprintf("      prefer_node: %s\n", app.PreferNode))
 		b.WriteString(fmt.Sprintf("      allow_workers: %t\n", app.AllowWorkers))
+		b.WriteString("    resources:\n")
+		b.WriteString(fmt.Sprintf("      cpu: %d\n", app.CPU))
+		b.WriteString(fmt.Sprintf("      memory_mb: %d\n", app.MemoryMB))
+		b.WriteString(fmt.Sprintf("    health_path: %s\n", app.HealthPath))
 	}
 	return b.String()
 }
@@ -443,6 +578,10 @@ apps:
     placement:
       prefer_node: oracle-main
       allow_workers: true
+    resources:
+      cpu: 500
+      memory_mb: 512
+    health_path: /
 `
 
 const defaultState = `nodes:

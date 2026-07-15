@@ -105,6 +105,10 @@ https://myprod-control.vercel.app/
 
 It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/smoke`, and can call the Oracle-local `poolctl agent` through `https://api.sankalpjha.dev/__poolctl` after unlocking with the agent token. The dashboard includes links to the repo, docs, and creator site.
 
+The hosted dashboard can register a public container image as a managed app. Registration validates and persists the app name, image, domain, target node, container port, health path, CPU reservation, and memory reservation in Oracle's agent store. It does not deploy implicitly. The operator reviews the new configured row and uses its separately confirmed **Deploy** action when DNS and the image are ready.
+
+**Resource Utilization** reads actual CPU, memory, and root-disk usage from Nomad's client stats endpoint for every registered node. These live host measurements are separate from the CPU and memory reservations shown for each managed app.
+
 Hosted node controls operate on the real Nomad scheduler:
 
 - **Freeze** disables scheduling eligibility while leaving existing allocations running.
@@ -113,6 +117,8 @@ Hosted node controls operate on the real Nomad scheduler:
 - **Reserve** assigns an empty worker exclusively to a project and makes it ineligible.
 - **Release** clears project ownership but deliberately leaves the worker frozen until a separate Unfreeze confirmation.
 - **Deploy** submits the rendered job and verifies that Nomad can read its resulting status.
+
+The hosted registration form currently accepts public images only. It does not accept secrets, private-registry credentials, environment variables, or persistent volumes. Do not place credentials in an image name, domain, health path, or other application field.
 
 Reserved projects appear under **Project Reservations** beside the managed app inventory. They are shown separately because a reserved machine is infrastructure capacity, not evidence that an application has been deployed.
 

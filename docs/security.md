@@ -35,6 +35,10 @@ Powerful actions display specific confirmations describing scheduler or workload
 
 Project reservation validates a constrained project ID, refuses the control plane, refuses workers with active allocations, and disables Nomad eligibility before persisting ownership. Release leaves the node frozen so cleanup and scheduler re-entry remain separate decisions.
 
+Hosted application registration accepts only constrained identifiers, registry image references, DNS hostnames, numeric resource limits, exact configured node names, and restricted health-check paths. These values are rendered into Nomad HCL, so newline, quote, shell, and HCL interpolation characters are rejected before persistence. Registration never deploys automatically.
+
+The current form is not a secret-management surface. Public image references are required, and credentials must not be entered into application fields. Private registry credentials, runtime secrets, and environment variables require an encrypted storage and redaction design before they can be exposed through the hosted dashboard.
+
 ## Guard Behavior
 
 The guard protects against resource-risk, not exact cloud billing in v1. It can freeze new placements when local thresholds are crossed, but it does not stop running apps automatically.

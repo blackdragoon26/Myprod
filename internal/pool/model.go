@@ -33,6 +33,9 @@ type App struct {
 	Port         int
 	PreferNode   string
 	AllowWorkers bool
+	CPU          int
+	MemoryMB     int
+	HealthPath   string
 }
 
 type State struct {

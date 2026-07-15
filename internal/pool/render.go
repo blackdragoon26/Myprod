@@ -979,6 +979,7 @@ WantedBy=timers.target
 }
 
 func renderNomadJob(app App) string {
+	app = appWithDefaults(app)
 	constraints := ""
 	if app.PreferNode != "" && !app.AllowWorkers {
 		constraints = fmt.Sprintf(`
@@ -1018,7 +1019,7 @@ func renderNomadJob(app App) string {
 
       check {
         type     = "http"
-        path     = "/"
+        path     = "%s"
         interval = "15s"
         timeout  = "3s"
       }
@@ -1033,13 +1034,13 @@ func renderNomadJob(app App) string {
       }
 
       resources {
-        cpu    = 500
-        memory = 512
+        cpu    = %d
+        memory = %d
       }
     }
   }
 }
-`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.Image)
+`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, app.Image, app.CPU, app.MemoryMB)
 }
 
 func userOrUbuntu(node Node) string {

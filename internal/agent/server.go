@@ -54,14 +54,15 @@ type nomadJobStatus struct {
 }
 
 type response struct {
-	OK      bool        `json:"ok"`
-	Error   string      `json:"error,omitempty"`
-	Output  string      `json:"output,omitempty"`
-	Config  any         `json:"config,omitempty"`
-	State   any         `json:"state,omitempty"`
-	Checks  []check     `json:"checks,omitempty"`
-	System  systemState `json:"system,omitempty"`
-	Updated string      `json:"updated,omitempty"`
+	OK        bool           `json:"ok"`
+	Error     string         `json:"error,omitempty"`
+	Output    string         `json:"output,omitempty"`
+	Config    any            `json:"config,omitempty"`
+	State     any            `json:"state,omitempty"`
+	Checks    []check        `json:"checks,omitempty"`
+	System    systemState    `json:"system,omitempty"`
+	Resources []nodeResource `json:"resources,omitempty"`
+	Updated   string         `json:"updated,omitempty"`
 }
 
 type check struct {
@@ -76,6 +77,44 @@ type systemState struct {
 	Nomad     string `json:"nomad"`
 	Traefik   string `json:"traefik"`
 	WireGuard string `json:"wireguard"`
+}
+
+type nodeResource struct {
+	Name              string  `json:"name"`
+	Status            string  `json:"status"`
+	CPUUsedPercent    float64 `json:"cpuUsedPercent"`
+	MemoryUsedBytes   uint64  `json:"memoryUsedBytes"`
+	MemoryTotalBytes  uint64  `json:"memoryTotalBytes"`
+	MemoryAvailable   uint64  `json:"memoryAvailableBytes"`
+	MemoryUsedPercent float64 `json:"memoryUsedPercent"`
+	DiskUsedBytes     uint64  `json:"diskUsedBytes"`
+	DiskTotalBytes    uint64  `json:"diskTotalBytes"`
+	DiskAvailable     uint64  `json:"diskAvailableBytes"`
+	DiskUsedPercent   float64 `json:"diskUsedPercent"`
+	UptimeSeconds     uint64  `json:"uptimeSeconds"`
+	Error             string  `json:"error,omitempty"`
+}
+
+type nomadClientStats struct {
+	AllocDirStats diskStat `json:"AllocDirStats"`
+	CPU           []struct {
+		Total float64 `json:"Total"`
+	} `json:"CPU"`
+	DiskStats []diskStat `json:"DiskStats"`
+	Memory    struct {
+		Available uint64 `json:"Available"`
+		Total     uint64 `json:"Total"`
+		Used      uint64 `json:"Used"`
+	} `json:"Memory"`
+	Uptime uint64 `json:"Uptime"`
+}
+
+type diskStat struct {
+	Available   uint64  `json:"Available"`
+	Mountpoint  string  `json:"Mountpoint"`
+	Size        uint64  `json:"Size"`
+	Used        uint64  `json:"Used"`
+	UsedPercent float64 `json:"UsedPercent"`
 }
 
 func Serve(args []string) error {
@@ -112,6 +151,7 @@ func Serve(args []string) error {
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
 	mux.HandleFunc("/__poolctl/api/status", s.handleStatus)
 	mux.HandleFunc("/__poolctl/api/action", s.handleAction)
+	mux.HandleFunc("/__poolctl/api/apps", s.handleApps)
 	mux.HandleFunc("/__poolctl/api/smoke", s.handleSmoke)
 
 	fmt.Printf("poolctl agent listening on http://%s\n", addr)
@@ -143,11 +183,40 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		state = reconciled
 	}
 	writeJSON(w, http.StatusOK, response{
+		OK:        true,
+		Config:    cfg,
+		State:     state,
+		System:    readSystemState(r.Context()),
+		Checks:    runSmokes(r.Context(), cfg),
+		Resources: s.readNodeResources(r.Context()),
+		Updated:   time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (s *server) handleApps(w http.ResponseWriter, r *http.Request) {
+	if !s.authorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var app pool.App
+	if err := decoder.Decode(&app); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid application: " + err.Error()})
+		return
+	}
+	app.AllowWorkers = false
+	if err := s.store.AddApp(app); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, response{
 		OK:      true,
-		Config:  cfg,
-		State:   state,
-		System:  readSystemState(r.Context()),
-		Checks:  runSmokes(r.Context(), cfg),
+		Output:  fmt.Sprintf("Registered application %s for %s. No workload was deployed.\n", app.Name, app.PreferNode),
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
 }
@@ -455,6 +524,60 @@ func (s *server) activeAllocations(ctx context.Context, nodeID string) ([]string
 		}
 	}
 	return active, nil
+}
+
+func (s *server) readNodeResources(ctx context.Context) []nodeResource {
+	nodes, err := s.listNomadNodes(ctx)
+	if err != nil {
+		return []nodeResource{{Status: "unavailable", Error: err.Error()}}
+	}
+	resources := make([]nodeResource, 0, len(nodes))
+	for _, node := range nodes {
+		item := nodeResource{Name: node.Name, Status: node.Status}
+		statsCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		out, statsErr := s.nomad(statsCtx, "operator", "api", "/v1/client/stats?node_id="+node.ID)
+		cancel()
+		if statsErr != nil {
+			item.Error = strings.TrimSpace(out)
+			if item.Error == "" {
+				item.Error = statsErr.Error()
+			}
+			resources = append(resources, item)
+			continue
+		}
+		var stats nomadClientStats
+		if err := json.Unmarshal([]byte(out), &stats); err != nil {
+			item.Error = "parse Nomad client stats: " + err.Error()
+			resources = append(resources, item)
+			continue
+		}
+		for _, cpu := range stats.CPU {
+			item.CPUUsedPercent += cpu.Total
+		}
+		if len(stats.CPU) > 0 {
+			item.CPUUsedPercent /= float64(len(stats.CPU))
+		}
+		item.MemoryUsedBytes = stats.Memory.Used
+		item.MemoryTotalBytes = stats.Memory.Total
+		item.MemoryAvailable = stats.Memory.Available
+		if stats.Memory.Total > 0 {
+			item.MemoryUsedPercent = float64(stats.Memory.Used) / float64(stats.Memory.Total) * 100
+		}
+		disk := stats.AllocDirStats
+		for _, candidate := range stats.DiskStats {
+			if candidate.Mountpoint == "/" {
+				disk = candidate
+				break
+			}
+		}
+		item.DiskUsedBytes = disk.Used
+		item.DiskTotalBytes = disk.Size
+		item.DiskAvailable = disk.Available
+		item.DiskUsedPercent = disk.UsedPercent
+		item.UptimeSeconds = stats.Uptime
+		resources = append(resources, item)
+	}
+	return resources
 }
 
 func (s *server) reconcileNodeState(ctx context.Context, cfg pool.Config, state pool.State) (pool.State, error) {

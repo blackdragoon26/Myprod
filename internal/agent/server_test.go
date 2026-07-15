@@ -3,12 +3,72 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/blackdragoon26/Myprod/internal/pool"
 )
+
+func TestRegisterAppEndpointPersistsWithoutDeploying(t *testing.T) {
+	store := testStore(t)
+	calledNomad := false
+	s := &server{store: store, token: "test-token", runNomad: func(context.Context, ...string) (string, error) {
+		calledNomad = true
+		return "", nil
+	}}
+	body := `{"Name":"example-api","Image":"ghcr.io/example/api:abc123","Domain":"example.example.com","Port":8080,"PreferNode":"do-worker-1","CPU":700,"MemoryMB":768,"HealthPath":"/healthz"}`
+	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/apps", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer test-token")
+	recorder := httptest.NewRecorder()
+	s.handleApps(recorder, req)
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	if calledNomad {
+		t.Fatal("registration must not submit a Nomad job")
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, ok := cfg.FindApp("example-api")
+	if !ok || app.PreferNode != "do-worker-1" || app.AllowWorkers {
+		t.Fatalf("registered app = %#v", app)
+	}
+	if state.Apps["example-api"].Status != "configured" {
+		t.Fatalf("app state = %#v", state.Apps["example-api"])
+	}
+}
+
+func TestReadNodeResourcesUsesLiveClientStats(t *testing.T) {
+	stats := `{
+		"CPU":[{"Total":20},{"Total":40}],
+		"Memory":{"Available":400,"Total":1000,"Used":600},
+		"DiskStats":[{"Mountpoint":"/","Available":700,"Size":1000,"Used":300,"UsedPercent":30}],
+		"Uptime":3600
+	}`
+	runner := func(_ context.Context, args ...string) (string, error) {
+		switch strings.Join(args, " ") {
+		case "node status -json":
+			return nodeListJSON(t), nil
+		case "operator api /v1/client/stats?node_id=control-id", "operator api /v1/client/stats?node_id=worker-id":
+			return stats, nil
+		default:
+			return "", nil
+		}
+	}
+	s := &server{runNomad: runner}
+	resources := s.readNodeResources(context.Background())
+	if len(resources) != 2 {
+		t.Fatalf("resources = %#v", resources)
+	}
+	if got := resources[0]; got.CPUUsedPercent != 30 || got.MemoryUsedPercent != 60 || got.DiskUsedPercent != 30 || got.UptimeSeconds != 3600 {
+		t.Fatalf("resource sample = %#v", got)
+	}
+}
 
 func TestLoopback(t *testing.T) {
 	if !isLoopback("127.0.0.1:8790") {

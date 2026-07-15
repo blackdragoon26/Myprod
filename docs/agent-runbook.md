@@ -213,7 +213,36 @@ ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
 Unlock the production dashboard, refresh it, and confirm the new node appears.
 Do not copy the agent token or private SSH keys into the repository.
 
-## 8. Reserve A Worker For A Project
+## 8. Register And Deploy An Application
+
+Use the hosted application flow for ordinary containerized backends. A project reservation is not required and would prevent Nomad from scheduling shared applications on that worker.
+
+Preflight requirements:
+
+- publish an immutable public container image for the target architecture;
+- make the service listen on `0.0.0.0` and record its container port;
+- expose an unauthenticated health endpoint that returns HTTP 2xx;
+- point the chosen application hostname to Oracle public IP `140.245.5.201`;
+- choose an exact target node with enough available CPU, memory, and disk;
+- verify the target is joined, eligible, not draining, and not reserved.
+
+From the hosted dashboard:
+
+1. Unlock with the Oracle agent token and refresh live state.
+2. Review **Resource Utilization**. CPU, memory, and root disk are actual host measurements from Nomad client stats.
+3. Select **Add application** under **Managed Apps**.
+4. Enter the app name, public image, domain, target node, container port, CPU reservation, memory reservation, and health path.
+5. Select **Register application**. This persists configuration only and does not start the container.
+6. Confirm the application appears with status `configured` and review its target and reservations.
+7. Select **Deploy**, read the live-workload warning, and confirm.
+8. Wait for Agent Output to report a healthy Nomad allocation on the selected node.
+9. Refresh and verify the app status is `deployed`, then test its public HTTPS URL.
+
+Do not enter secrets or private-registry credentials. This release supports public images and ephemeral container filesystems only; it does not yet model environment variables, encrypted secrets, persistent volumes, application deletion, or configuration edits.
+
+Registration uses exact-node placement. This constrains one app without reserving the entire worker, so unrelated Nomad applications can share remaining capacity.
+
+## 9. Reserve A Worker For A Project
 
 Use a reservation when one project needs the entire machine, especially for host-level package installation, network namespaces, kernel modules, or other privileged work.
 
@@ -272,7 +301,7 @@ The reserved node must show `ineligible`. Oracle's `/opt/poolctl/.poolctl/state.
 
 **Release** clears project ownership but intentionally keeps the node ineligible. Inspect and clean the worker first, then use the separately confirmed **Unfreeze** action to return it to the shared scheduler.
 
-## 9. Action Semantics
+## 10. Action Semantics
 
 - **Control status** reads real systemd service state.
 - **Deploy** runs a real Nomad job submission and status verification.

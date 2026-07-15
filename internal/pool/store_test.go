@@ -284,10 +284,13 @@ func TestRenderControlPlane(t *testing.T) {
 func TestRenderAppJob(t *testing.T) {
 	file, err := RenderAppJob(Config{
 		Apps: []App{{
-			Name:   "sample-api",
-			Image:  "ghcr.io/example/sample-api:latest",
-			Domain: "api.example.com",
-			Port:   3000,
+			Name:       "sample-api",
+			Image:      "ghcr.io/example/sample-api:latest",
+			Domain:     "api.example.com",
+			Port:       3000,
+			CPU:        900,
+			MemoryMB:   1024,
+			HealthPath: "/healthz",
 		}},
 	}, "sample-api")
 	if err != nil {
@@ -301,6 +304,69 @@ func TestRenderAppJob(t *testing.T) {
 	}
 	if !strings.Contains(file.Content, "tls.certresolver=letsencrypt") {
 		t.Fatal("expected HTTPS router to use the Let's Encrypt resolver")
+	}
+	if !strings.Contains(file.Content, `path     = "/healthz"`) {
+		t.Fatal("expected configured health path")
+	}
+	if !strings.Contains(file.Content, "cpu    = 900") || !strings.Contains(file.Content, "memory = 1024") {
+		t.Fatal("expected configured resource reservations")
+	}
+}
+
+func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	app := App{
+		Name: "example-api", Image: "ghcr.io/example/api:abc123", Domain: "example-api.example.com",
+		Port: 8080, PreferNode: "oracle-main", CPU: 750, MemoryMB: 768, HealthPath: "/healthz",
+	}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := cfg.FindApp("example-api")
+	if !ok {
+		t.Fatal("registered app was not persisted")
+	}
+	if got.CPU != 750 || got.MemoryMB != 768 || got.HealthPath != "/healthz" {
+		t.Fatalf("persisted app = %#v", got)
+	}
+	if live := state.Apps["example-api"]; live.Status != "configured" || live.Node != "oracle-main" {
+		t.Fatalf("app state = %#v", live)
+	}
+}
+
+func TestAddAppRejectsUnsafeAndDuplicateConfiguration(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	base := App{Name: "bad-api", Image: "image;touch/tmp/x", Domain: "bad.example.com", Port: 8080, PreferNode: "oracle-main"}
+	if err := store.AddApp(base); err == nil || !strings.Contains(err.Error(), "image") {
+		t.Fatalf("unsafe image error = %v", err)
+	}
+	base.Image = "ghcr.io/example/api:1"
+	base.Domain = "https://bad.example.com/path"
+	if err := store.AddApp(base); err == nil || !strings.Contains(err.Error(), "domain") {
+		t.Fatalf("unsafe domain error = %v", err)
+	}
+	base.Domain = "bad.example.com"
+	base.HealthPath = `/${danger}`
+	if err := store.AddApp(base); err == nil || !strings.Contains(err.Error(), "health path") {
+		t.Fatalf("unsafe health path error = %v", err)
+	}
+	base.HealthPath = "/healthz"
+	if err := store.AddApp(base); err != nil {
+		t.Fatal(err)
+	}
+	base.Name = "second-api"
+	if err := store.AddApp(base); err == nil || !strings.Contains(err.Error(), "already used") {
+		t.Fatalf("duplicate domain error = %v", err)
 	}
 }
 

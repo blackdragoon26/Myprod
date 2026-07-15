@@ -78,6 +78,26 @@ V1 is intentionally SSH-first:
 3. `poolctl app deploy <app>` renders the Nomad job, copies it to Oracle, and runs it through Nomad's WireGuard-bound HTTPS API.
 4. Later worker-node commands will add more Nomad clients behind the same Oracle ingress.
 
+## Managed Application Lifecycle
+
+1. Build and publish an immutable public container image for the target architecture.
+2. Point the application's DNS hostname at Oracle's public ingress IP.
+3. Unlock the hosted dashboard and select **Add application**.
+4. Register the image, hostname, container port, health path, resource reservations, and exact target node.
+5. Registration writes Oracle's agent configuration but does not start a workload.
+6. Review the configured row, select **Deploy**, and confirm the live Nomad update.
+7. The agent submits the rendered job and reports success only after a healthy allocation is running on the selected node.
+
+Exact-node placement makes architecture and capacity decisions explicit. It does not reserve the whole node; other Nomad workloads may share that node. Whole-machine reservations remain a separate mechanism for privileged host-level work.
+
+The first hosted application release supports public images and ephemeral container filesystems. Secret injection, private registries, environment variables, persistent volumes, application deletion, and rolling configuration edits require additional lifecycle support and are not implied by registration.
+
+## Resource Telemetry
+
+The Oracle agent queries Nomad's client statistics API through the Nomad server for each node. The hosted dashboard reports actual host CPU, memory, and root-disk usage and the corresponding available capacity. A telemetry failure is isolated to its node and does not block pool status or operator actions.
+
+Managed-app CPU and memory values are scheduler reservations rendered into the Nomad job. They are capacity requests, not measurements of current process consumption.
+
 ## WireGuard Lifecycle
 
 The intended implementation:
