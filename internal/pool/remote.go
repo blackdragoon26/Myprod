@@ -329,6 +329,7 @@ func controlAllowNomadOverlayCommand() string {
 	return `set -euo pipefail
 if command -v ufw >/dev/null 2>&1; then
   sudo ufw allow in on wg0 from 10.44.0.0/24 to any port 4646:4648 proto tcp
+  sudo ufw allow in on wg0 from 10.44.0.0/24 to any port 20000:32000 proto tcp
 fi
 for port in 4646 4647 4648; do
   if ! sudo iptables -C INPUT -i wg0 -p tcp -s 10.44.0.0/24 --dport "$port" -m comment --comment "poolctl-nomad-overlay-$port" -j ACCEPT 2>/dev/null; then

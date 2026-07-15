@@ -295,6 +295,7 @@ func TestRenderControlPlane(t *testing.T) {
 
 func TestRenderAppJob(t *testing.T) {
 	file, err := RenderAppJob(Config{
+		Nodes: []Node{{Name: "oracle-main", OverlayIP: "10.44.0.1"}},
 		Apps: []App{{
 			Name:       "sample-api",
 			Image:      "ghcr.io/example/sample-api:latest",
@@ -303,6 +304,7 @@ func TestRenderAppJob(t *testing.T) {
 			CPU:        900,
 			MemoryMB:   1024,
 			HealthPath: "/healthz",
+			PreferNode: "oracle-main",
 		}},
 	}, "sample-api")
 	if err != nil {
@@ -313,6 +315,9 @@ func TestRenderAppJob(t *testing.T) {
 	}
 	if !strings.Contains(file.Content, "provider = \"nomad\"") {
 		t.Fatal("expected nomad service provider")
+	}
+	if !strings.Contains(file.Content, `host_network = "wireguard"`) {
+		t.Fatal("expected app port to bind on the WireGuard host network")
 	}
 	if !strings.Contains(file.Content, "tls.certresolver=letsencrypt") {
 		t.Fatal("expected HTTPS router to use the Let's Encrypt resolver")
@@ -415,11 +420,17 @@ func TestRenderWorkerJoin(t *testing.T) {
 	if !strings.Contains(bootstrap, "wait_for_wireguard") || !strings.Contains(bootstrap, "systemctl restart nomad") {
 		t.Fatal("worker bootstrap should verify WireGuard before starting Nomad")
 	}
+	if !strings.Contains(bootstrap, "port 20000:32000 proto tcp") {
+		t.Fatal("worker bootstrap should allow Nomad HTTP ports only on the overlay")
+	}
 	if !strings.Contains(client, `name       = "do-worker-1"`) {
 		t.Fatal("Nomad client should use worker node name")
 	}
 	if !strings.Contains(client, `servers = ["10.44.0.1:4647"]`) {
 		t.Fatal("Nomad client should connect to the control plane over WireGuard")
+	}
+	if !strings.Contains(client, `host_network "wireguard"`) || !strings.Contains(client, `interface = "wg0"`) {
+		t.Fatal("Nomad client should register the WireGuard host network")
 	}
 	if strings.Contains(client, "tokens") || strings.Contains(client, "__NOMAD_AGENT_TOKEN__") {
 		t.Fatal("Nomad client should avoid unsupported ACL token config")

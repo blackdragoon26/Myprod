@@ -99,6 +99,11 @@ The Oracle agent queries Nomad's client statistics API through the Nomad server 
 
 Managed-app CPU and memory values are scheduler reservations rendered into the Nomad job. They are capacity requests, not measurements of current process consumption.
 
+Managed HTTP ports are allocated from Nomad's dynamic port range on the named
+`wireguard` host network. Traefik receives the target node's overlay address,
+never its public VPS address. Worker firewalls permit that range only on `wg0`
+from the pool overlay, so application ports remain closed to the public internet.
+
 ## WireGuard Lifecycle
 
 The intended implementation:

@@ -9,6 +9,8 @@ This project assumes all VPS machines are public internet hosts, so scheduler an
 - Nomad mTLS CA is generated during control-plane setup.
 - Each node receives its own client certificate during join.
 - Public firewall allows only SSH, HTTP, HTTPS, and WireGuard.
+- Worker application ports are allowed only on `wg0` from `10.44.0.0/24` and
+  are never opened on the public VPS interface.
 - App secrets are stored using SOPS + age, not plaintext YAML.
 
 ## Current Bootstrap Behavior

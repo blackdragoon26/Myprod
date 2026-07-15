@@ -71,6 +71,13 @@ func RenderAppJob(cfg Config, appName string) (RenderedFile, error) {
 	if app.Port == 0 {
 		return RenderedFile{}, fmt.Errorf("app %q is missing port", app.Name)
 	}
+	target, ok := cfg.FindNode(app.PreferNode)
+	if !ok {
+		return RenderedFile{}, fmt.Errorf("app %q targets unknown node %q", app.Name, app.PreferNode)
+	}
+	if target.OverlayIP == "" {
+		return RenderedFile{}, fmt.Errorf("target node %q is missing overlay_ip", target.Name)
+	}
 
 	return RenderedFile{
 		Path:    filepath.Join("nomad", "jobs", app.Name+".nomad.hcl"),
@@ -676,6 +683,11 @@ tls {
 client {
   enabled = true
   servers = ["%s:4647"]
+
+  host_network "wireguard" {
+    cidr      = "10.44.0.0/24"
+    interface = "wg0"
+  }
 }
 
 plugin "docker" {
@@ -713,6 +725,11 @@ tls {
 client {
   enabled = true
   servers = ["%s:4647"]
+
+  host_network "wireguard" {
+    cidr      = "10.44.0.0/24"
+    interface = "wg0"
+  }
 }
 
 plugin "docker" {
@@ -855,6 +872,7 @@ $SUDO install -m 0644 -o nomad -g nomad tls/global-client-nomad.pem /etc/nomad.d
 $SUDO install -m 0640 -o nomad -g nomad tls/global-client-nomad-key.pem /etc/nomad.d/tls/global-client-nomad-key.pem
 
 $SUDO ufw allow OpenSSH
+$SUDO ufw allow in on wg0 from 10.44.0.0/24 to any port 20000:32000 proto tcp
 $SUDO ufw --force enable
 
 $SUDO systemctl daemon-reload
@@ -998,7 +1016,8 @@ func renderNomadJob(app App) string {
   group "web" {%s
     network {
       port "http" {
-        to = %d
+        to           = %d
+        host_network = "wireguard"
       }
     }
 
