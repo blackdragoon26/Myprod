@@ -19,12 +19,18 @@ import (
 
 const defaultAddr = "127.0.0.1:8790"
 
+const (
+	p4LensAppName     = "p4lens-api"
+	p4LensImagePrefix = "ghcr.io/openlabnetworks/p4lens-backend@sha256:"
+)
+
 type server struct {
-	addr     string
-	store    pool.Store
-	token    string
-	runNomad func(context.Context, ...string) (string, error)
-	dns      dnsManager
+	addr        string
+	store       pool.Store
+	token       string
+	deployToken string
+	runNomad    func(context.Context, ...string) (string, error)
+	dns         dnsManager
 }
 
 type nomadNode struct {
@@ -147,17 +153,119 @@ func Serve(args []string) error {
 	if !isLoopback(addr) && len(token) < 32 {
 		return errors.New("POOLCTL_AGENT_TOKEN must be at least 32 characters when binding outside localhost")
 	}
-	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, runNomad: runNomad, dns: newNetlifyDNSFromEnv()}
+	deployToken := strings.TrimSpace(os.Getenv("POOLCTL_P4LENS_DEPLOY_TOKEN"))
+	if deployToken != "" && len(deployToken) < 32 {
+		return errors.New("POOLCTL_P4LENS_DEPLOY_TOKEN must be at least 32 characters")
+	}
+	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, deployToken: deployToken, runNomad: runNomad, dns: newNetlifyDNSFromEnv()}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
 	mux.HandleFunc("/__poolctl/api/status", s.handleStatus)
 	mux.HandleFunc("/__poolctl/api/action", s.handleAction)
 	mux.HandleFunc("/__poolctl/api/apps", s.handleApps)
+	mux.HandleFunc("/__poolctl/api/deploy/p4lens", s.handleP4LensDeploy)
 	mux.HandleFunc("/__poolctl/api/smoke", s.handleSmoke)
 
 	fmt.Printf("poolctl agent listening on http://%s\n", addr)
 	return http.ListenAndServe(addr, withHeaders(mux))
+}
+
+func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
+	if !authorizedToken(w, r, s.deployToken) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var req struct {
+		Image string `json:"image"`
+	}
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid deployment: " + err.Error()})
+		return
+	}
+	if !validP4LensImage(req.Image) {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "image must be the immutable openlabnetworks/p4lens-backend sha256 digest"})
+		return
+	}
+	output, err := s.deployP4Lens(r.Context(), req.Image)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error(), Output: output})
+		return
+	}
+	writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
+}
+
+func (s *server) deployP4Lens(ctx context.Context, image string) (string, error) {
+	cfg, state, err := s.store.Load()
+	if err != nil {
+		return "", err
+	}
+	app, ok := cfg.FindApp(p4LensAppName)
+	if !ok {
+		return "", fmt.Errorf("unknown app %q", p4LensAppName)
+	}
+	if app.ManageDNS && state.Apps[app.Name].DNSStatus != "ready" {
+		return "", fmt.Errorf("managed DNS is %s", state.Apps[app.Name].DNSStatus)
+	}
+	placement := app.PreferNode
+	if placement == "" {
+		placement = "oracle-main"
+	}
+	if nodeState := state.Nodes[placement]; nodeState.Frozen || nodeState.Draining || nodeState.ReservedFor != "" {
+		return "", fmt.Errorf("target node %s is unavailable: frozen=%t draining=%t reserved_for=%q", placement, nodeState.Frozen, nodeState.Draining, nodeState.ReservedFor)
+	}
+	for i := range cfg.Apps {
+		if cfg.Apps[i].Name == app.Name {
+			cfg.Apps[i].Image = image
+			app = cfg.Apps[i]
+			break
+		}
+	}
+	file, err := pool.RenderAppJob(cfg, app.Name)
+	if err != nil {
+		return "", err
+	}
+	const tmpDir = "/tmp/poolctl-agent-rendered"
+	if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
+		return "", err
+	}
+	out, err := s.nomad(ctx, "job", "run", "-detach", tmpDir+"/"+file.Path)
+	if err != nil {
+		return out, err
+	}
+	statusOut, err := s.verifyJobDeployment(ctx, app.Name, placement)
+	if err != nil {
+		return out + "\nDeployment was submitted, but verification failed:\n" + statusOut, err
+	}
+	if err := s.store.SetAppImage(app.Name, image); err != nil {
+		return out, fmt.Errorf("persist deployed image: %w", err)
+	}
+	state.SetApp(app.Name, placement, "deployed")
+	if err := s.store.SaveState(state); err != nil {
+		return out, err
+	}
+	return out + "\nVerified Nomad job status:\n" + statusOut, nil
+}
+
+func validP4LensImage(image string) bool {
+	digest := strings.TrimPrefix(image, p4LensImagePrefix)
+	if digest == image || len(digest) != 64 {
+		return false
+	}
+	for _, char := range digest {
+		if char < '0' || char > '9' {
+			if char < 'a' || char > 'f' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -705,6 +813,19 @@ func (s *server) authorized(w http.ResponseWriter, r *http.Request) bool {
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		return false
+	}
+	return true
+}
+
+func authorizedToken(w http.ResponseWriter, r *http.Request, token string) bool {
+	if token == "" {
+		writeJSON(w, http.StatusServiceUnavailable, response{OK: false, Error: "deployment endpoint is not configured"})
+		return false
+	}
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return false
 	}

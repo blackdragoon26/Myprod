@@ -46,6 +46,70 @@ func TestRegisterAppEndpointPersistsWithoutDeploying(t *testing.T) {
 	}
 }
 
+func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
+	store := testStore(t)
+	app := pool.App{
+		Name: p4LensAppName, Image: p4LensImagePrefix + strings.Repeat("a", 64),
+		Domain: "p4lens-api.sankalpjha.dev", Port: 8000, PreferNode: "oracle-main",
+		CPU: 500, MemoryMB: 512, HealthPath: "/health", ManageDNS: true,
+	}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAppDNS(app.Name, "ready", "A record resolves"); err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	runner := func(_ context.Context, args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if strings.Join(args, " ") == "job status -json p4lens-api" {
+			return `[{"Allocations":[{"JobID":"p4lens-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+		}
+		return "Nomad accepted command.\n", nil
+	}
+	s := &server{store: store, deployToken: "deploy-token", runNomad: runner}
+	image := p4LensImagePrefix + strings.Repeat("b", 64)
+	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/deploy/p4lens", strings.NewReader(`{"image":"`+image+`"}`))
+	req.Header.Set("Authorization", "Bearer deploy-token")
+	recorder := httptest.NewRecorder()
+	s.handleP4LensDeploy(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !hasCall(calls, "job run -detach /tmp/poolctl-agent-rendered/nomad/jobs/p4lens-api.nomad.hcl") {
+		t.Fatalf("deploy calls = %#v", calls)
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := cfg.FindApp(p4LensAppName)
+	if got.Image != image || state.Apps[p4LensAppName].Status != "deployed" {
+		t.Fatalf("app = %#v state = %#v", got, state.Apps[p4LensAppName])
+	}
+}
+
+func TestP4LensDeployEndpointRejectsOtherImagesAndTokens(t *testing.T) {
+	s := &server{deployToken: "deploy-token"}
+	for _, test := range []struct {
+		token string
+		image string
+		want  int
+	}{
+		{"wrong", p4LensImagePrefix + strings.Repeat("a", 64), http.StatusUnauthorized},
+		{"deploy-token", "ghcr.io/example/other@sha256:" + strings.Repeat("a", 64), http.StatusBadRequest},
+		{"deploy-token", p4LensImagePrefix + strings.Repeat("g", 64), http.StatusBadRequest},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/deploy/p4lens", strings.NewReader(`{"image":"`+test.image+`"}`))
+		req.Header.Set("Authorization", "Bearer "+test.token)
+		recorder := httptest.NewRecorder()
+		s.handleP4LensDeploy(recorder, req)
+		if recorder.Code != test.want {
+			t.Fatalf("token=%q image=%q status=%d body=%s", test.token, test.image, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
 type fakeDNS struct {
 	result dnsResult
 	err    error
