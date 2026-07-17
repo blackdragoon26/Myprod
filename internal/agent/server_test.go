@@ -63,9 +63,9 @@ func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 	runner := func(_ context.Context, args ...string) (string, error) {
 		calls = append(calls, append([]string(nil), args...))
 		if strings.Join(args, " ") == "job status -json p4lens-api" {
-			return `[{"Allocations":[{"JobID":"p4lens-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+			return `[{"Allocations":[{"EvalID":"eval-new","JobID":"p4lens-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
 		}
-		return "Nomad accepted command.\n", nil
+		return "Job registration successful\nEvaluation ID: eval-new\n", nil
 	}
 	s := &server{store: store, deployToken: "deploy-token", runNomad: runner}
 	image := p4LensImagePrefix + strings.Repeat("b", 64)
@@ -186,9 +186,9 @@ func TestDeployWithReadyManagedDNSPreservesDNSState(t *testing.T) {
 	dns := &fakeDNS{result: dnsResult{Status: "ready", Message: "A record resolves to 140.245.5.201"}}
 	runner := func(_ context.Context, args ...string) (string, error) {
 		if strings.Join(args, " ") == "job status -json dns-api" {
-			return `[{"Allocations":[{"ID":"alloc-1","JobID":"dns-api","NodeName":"do-worker-1","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+			return `[{"Allocations":[{"ID":"alloc-1","EvalID":"eval-new","JobID":"dns-api","NodeName":"do-worker-1","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
 		}
-		return "Nomad accepted command.\n", nil
+		return "Job registration successful\nEvaluation ID: eval-new\n", nil
 	}
 	s := &server{store: store, dns: dns, runNomad: runner}
 	if _, err := s.runAction(context.Background(), "app-deploy", "dns-api", ""); err != nil {
@@ -385,12 +385,12 @@ func TestDeployVerifiesHealthyAllocationBeforeSavingState(t *testing.T) {
 		calls = append(calls, append([]string(nil), args...))
 		if strings.Join(args, " ") == "job status -json sample-api" {
 			return `[{"Allocations":[{
-				"ID":"alloc-1","JobID":"sample-api","NodeName":"oracle-main",
+				"ID":"alloc-1","EvalID":"eval-new","JobID":"sample-api","NodeName":"oracle-main",
 				"ClientStatus":"running","DesiredStatus":"run",
 				"DeploymentStatus":{"Healthy":true}
 			}]}]`, nil
 		}
-		return "Nomad accepted command.\n", nil
+		return "Job registration successful\nEvaluation ID: eval-new\n", nil
 	}
 	s := &server{store: store, runNomad: runner}
 	out, err := s.runAction(context.Background(), "app-deploy", "sample-api", "")
@@ -417,15 +417,29 @@ func TestDeployVerifiesHealthyAllocationBeforeSavingState(t *testing.T) {
 
 func TestDeploymentVerifiedRejectsWrongNode(t *testing.T) {
 	raw := []byte(`[{"Allocations":[{
-		"JobID":"sample-api","NodeName":"do-worker-1",
+		"EvalID":"eval-new","JobID":"sample-api","NodeName":"do-worker-1",
 		"ClientStatus":"running","DesiredStatus":"run",
 		"DeploymentStatus":{"Healthy":true}
 	}]}]`)
-	ok, reason, err := deploymentVerified(raw, "sample-api", "oracle-main")
+	ok, reason, err := deploymentVerified(raw, "sample-api", "oracle-main", "eval-new")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ok || !strings.Contains(reason, "none are healthy and running on oracle-main") {
+		t.Fatalf("verified=%t reason=%q", ok, reason)
+	}
+}
+
+func TestDeploymentVerifiedIgnoresHealthyAllocationFromOldEvaluation(t *testing.T) {
+	raw := []byte(`[{"Allocations":[
+		{"EvalID":"eval-old","JobID":"sample-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}},
+		{"EvalID":"eval-new","JobID":"sample-api","NodeName":"oracle-main","ClientStatus":"pending","DesiredStatus":"run","DeploymentStatus":{"Healthy":false}}
+	]}]`)
+	ok, reason, err := deploymentVerified(raw, "sample-api", "oracle-main", "eval-new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok || !strings.Contains(reason, "none are healthy") {
 		t.Fatalf("verified=%t reason=%q", ok, reason)
 	}
 }

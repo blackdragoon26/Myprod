@@ -50,6 +50,7 @@ type nomadNode struct {
 type nomadJobStatus struct {
 	Allocations []struct {
 		ID               string `json:"ID"`
+		EvalID           string `json:"EvalID"`
 		JobID            string `json:"JobID"`
 		NodeName         string `json:"NodeName"`
 		ClientStatus     string `json:"ClientStatus"`
@@ -239,7 +240,11 @@ func (s *server) deployP4Lens(ctx context.Context, image string) (string, error)
 	if err != nil {
 		return out, err
 	}
-	statusOut, err := s.verifyJobDeployment(ctx, app.Name, placement)
+	evalID, err := submittedEvaluationID(out)
+	if err != nil {
+		return out, err
+	}
+	statusOut, err := s.verifyJobDeployment(ctx, app.Name, placement, evalID)
 	if err != nil {
 		return out + "\nDeployment was submitted, but verification failed:\n" + statusOut, err
 	}
@@ -448,7 +453,11 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if err != nil {
 			return out, err
 		}
-		statusOut, statusErr := s.verifyJobDeployment(ctx, name, placement)
+		evalID, err := submittedEvaluationID(out)
+		if err != nil {
+			return out, err
+		}
+		statusOut, statusErr := s.verifyJobDeployment(ctx, name, placement, evalID)
 		if statusErr != nil {
 			return out + "\nDeployment was submitted, but verification failed:\n" + statusOut, statusErr
 		}
@@ -608,7 +617,18 @@ func (s *server) nomad(ctx context.Context, args ...string) (string, error) {
 	return s.runNomad(ctx, args...)
 }
 
-func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode string) (string, error) {
+func submittedEvaluationID(output string) (string, error) {
+	for _, line := range strings.Split(output, "\n") {
+		if value, found := strings.CutPrefix(strings.TrimSpace(line), "Evaluation ID:"); found {
+			if evalID := strings.TrimSpace(value); evalID != "" {
+				return evalID, nil
+			}
+		}
+	}
+	return "", errors.New("Nomad submission did not report an evaluation ID")
+}
+
+func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode, evalID string) (string, error) {
 	var lastOutput string
 	var lastReason string
 	for attempt := 0; attempt < 15; attempt++ {
@@ -617,7 +637,7 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode 
 		if err != nil {
 			lastReason = fmt.Sprintf("read job status: %v", err)
 		} else {
-			verified, reason, parseErr := deploymentVerified([]byte(out), jobName, expectedNode)
+			verified, reason, parseErr := deploymentVerified([]byte(out), jobName, expectedNode, evalID)
 			if parseErr != nil {
 				return out, parseErr
 			}
@@ -637,7 +657,7 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode 
 	return lastOutput, fmt.Errorf("job %s did not become healthy on %s within 30 seconds: %s", jobName, expectedNode, lastReason)
 }
 
-func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string, error) {
+func deploymentVerified(raw []byte, jobName, expectedNode, evalID string) (bool, string, error) {
 	var statuses []nomadJobStatus
 	if err := json.Unmarshal(raw, &statuses); err != nil {
 		var status nomadJobStatus
@@ -649,7 +669,7 @@ func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string,
 	seen := 0
 	for _, status := range statuses {
 		for _, allocation := range status.Allocations {
-			if allocation.JobID != jobName {
+			if allocation.JobID != jobName || allocation.EvalID != evalID {
 				continue
 			}
 			seen++
@@ -659,7 +679,7 @@ func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string,
 		}
 	}
 	if seen == 0 {
-		return false, "no allocations were reported", nil
+		return false, fmt.Sprintf("no allocations were reported for evaluation %s", evalID), nil
 	}
 	return false, fmt.Sprintf("%d allocation(s) exist but none are healthy and running on %s", seen, expectedNode), nil
 }
