@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blackdragoon26/Myprod/internal/pool"
@@ -31,6 +32,7 @@ type server struct {
 	deployToken string
 	runNomad    func(context.Context, ...string) (string, error)
 	dns         dnsManager
+	deployMu    sync.Mutex
 }
 
 type nomadNode struct {
@@ -203,6 +205,9 @@ func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) deployP4Lens(ctx context.Context, image string) (string, error) {
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
 	cfg, state, err := s.store.Load()
 	if err != nil {
 		return "", err
@@ -232,7 +237,11 @@ func (s *server) deployP4Lens(ctx context.Context, image string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	const tmpDir = "/tmp/poolctl-agent-rendered"
+	tmpDir, err := os.MkdirTemp("", "poolctl-agent-deploy-*")
+	if err != nil {
+		return "", fmt.Errorf("create deployment render directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
 	if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
 		return "", err
 	}
@@ -413,6 +422,9 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if name == "" {
 			return "", errors.New("missing app name")
 		}
+		s.deployMu.Lock()
+		defer s.deployMu.Unlock()
+
 		cfg, state, err := s.store.Load()
 		if err != nil {
 			return "", err
@@ -445,7 +457,11 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if err != nil {
 			return "", err
 		}
-		tmpDir := "/tmp/poolctl-agent-rendered"
+		tmpDir, err := os.MkdirTemp("", "poolctl-agent-deploy-*")
+		if err != nil {
+			return "", fmt.Errorf("create deployment render directory: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
 		if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
 			return "", err
 		}

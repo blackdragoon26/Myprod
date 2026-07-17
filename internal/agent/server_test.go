@@ -3,11 +3,14 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/blackdragoon26/Myprod/internal/pool"
 )
@@ -76,7 +79,7 @@ func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
 	}
-	if !hasCall(calls, "job run -detach /tmp/poolctl-agent-rendered/nomad/jobs/p4lens-api.nomad.hcl") {
+	if !hasCallPrefix(calls, "job run -detach ", "/nomad/jobs/p4lens-api.nomad.hcl") {
 		t.Fatalf("deploy calls = %#v", calls)
 	}
 	cfg, state, err := store.Load()
@@ -86,6 +89,89 @@ func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 	got, _ := cfg.FindApp(p4LensAppName)
 	if got.Image != image || state.Apps[p4LensAppName].Status != "deployed" {
 		t.Fatalf("app = %#v state = %#v", got, state.Apps[p4LensAppName])
+	}
+}
+
+func TestP4LensDeploysAreSerializedWithUniqueRenderedImages(t *testing.T) {
+	store := testStore(t)
+	app := pool.App{
+		Name: p4LensAppName, Image: p4LensImagePrefix + strings.Repeat("a", 64),
+		Domain: "p4lens-api.sankalpjha.dev", Port: 8000, PreferNode: "oracle-main",
+		CPU: 500, MemoryMB: 512, HealthPath: "/health", ManageDNS: true,
+	}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetAppDNS(app.Name, "ready", "A record resolves"); err != nil {
+		t.Fatal(err)
+	}
+
+	type submission struct {
+		path    string
+		content string
+	}
+	submitted := make(chan submission, 2)
+	releaseFirst := make(chan struct{})
+	activeEval := ""
+	submissionCount := 0
+	runner := func(_ context.Context, args ...string) (string, error) {
+		if len(args) == 4 && strings.Join(args[:3], " ") == "job run -detach" {
+			content, err := os.ReadFile(args[3])
+			if err != nil {
+				return "", err
+			}
+			submissionCount++
+			activeEval = fmt.Sprintf("eval-%d", submissionCount)
+			submitted <- submission{path: args[3], content: string(content)}
+			if submissionCount == 1 {
+				<-releaseFirst
+			}
+			return "Job registration successful\nEvaluation ID: " + activeEval + "\n", nil
+		}
+		return `[{"Allocations":[{"EvalID":"` + activeEval + `","JobID":"p4lens-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+	}
+	s := &server{store: store, runNomad: runner}
+	imageOne := p4LensImagePrefix + strings.Repeat("b", 64)
+	imageTwo := p4LensImagePrefix + strings.Repeat("c", 64)
+	results := make(chan error, 2)
+	go func() {
+		_, err := s.deployP4Lens(context.Background(), imageOne)
+		results <- err
+	}()
+	first := <-submitted
+	go func() {
+		_, err := s.deployP4Lens(context.Background(), imageTwo)
+		results <- err
+	}()
+	select {
+	case second := <-submitted:
+		t.Fatalf("second deployment submitted before first completed: %s", second.path)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseFirst)
+	if err := <-results; err != nil {
+		t.Fatal(err)
+	}
+	second := <-submitted
+	if err := <-results; err != nil {
+		t.Fatal(err)
+	}
+	if first.path == second.path {
+		t.Fatalf("deployments reused render path %q", first.path)
+	}
+	if !strings.Contains(first.content, imageOne) || strings.Contains(first.content, imageTwo) {
+		t.Fatalf("first rendered job does not contain only its image")
+	}
+	if !strings.Contains(second.content, imageTwo) || strings.Contains(second.content, imageOne) {
+		t.Fatalf("second rendered job does not contain only its image")
+	}
+	cfg, _, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := cfg.FindApp(p4LensAppName)
+	if got.Image != imageTwo {
+		t.Fatalf("persisted image = %q, want %q", got.Image, imageTwo)
 	}
 }
 
@@ -400,7 +486,7 @@ func TestDeployVerifiesHealthyAllocationBeforeSavingState(t *testing.T) {
 	if !hasCall(calls, "job status -json sample-api") {
 		t.Fatalf("deploy did not verify JSON job status: %#v", calls)
 	}
-	if !hasCall(calls, "job run -detach /tmp/poolctl-agent-rendered/nomad/jobs/sample-api.nomad.hcl") {
+	if !hasCallPrefix(calls, "job run -detach ", "/nomad/jobs/sample-api.nomad.hcl") {
 		t.Fatalf("deploy did not submit the job detached: %#v", calls)
 	}
 	if !strings.Contains(out, "Verified Nomad job status") {
@@ -487,6 +573,16 @@ func nodeListJSON(t *testing.T) string {
 func hasCall(calls [][]string, want string) bool {
 	for _, call := range calls {
 		if strings.Join(call, " ") == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasCallPrefix(calls [][]string, prefix, suffix string) bool {
+	for _, call := range calls {
+		joined := strings.Join(call, " ")
+		if strings.HasPrefix(joined, prefix) && strings.HasSuffix(joined, suffix) {
 			return true
 		}
 	}
