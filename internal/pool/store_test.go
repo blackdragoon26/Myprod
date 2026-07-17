@@ -440,6 +440,13 @@ func TestRenderWorkerJoin(t *testing.T) {
 	}
 }
 
+func TestRenderNomadServerIncludesDockerRegistryAuth(t *testing.T) {
+	server := renderNomadServer(Node{Name: "oracle-main", OverlayIP: "10.44.0.1"})
+	if !strings.Contains(server, `config = "/etc/nomad-docker/config.json"`) {
+		t.Fatalf("Nomad server missing Docker registry auth config:\n%s", server)
+	}
+}
+
 func TestExtractWireGuardKeyIgnoresCommandOutput(t *testing.T) {
 	raw := `Hit:1 http://mirrors.digitalocean.com/ubuntu noble InRelease
 Reading package lists...

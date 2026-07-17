@@ -647,7 +647,8 @@ func submittedEvaluationID(output string) (string, error) {
 func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode, evalID string) (string, error) {
 	var lastOutput string
 	var lastReason string
-	for attempt := 0; attempt < 15; attempt++ {
+	const attempts = 45
+	for attempt := 0; attempt < attempts; attempt++ {
 		out, err := s.nomad(ctx, "job", "status", "-json", jobName)
 		lastOutput = out
 		if err != nil {
@@ -662,7 +663,7 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode,
 			}
 			lastReason = reason
 		}
-		if attempt < 14 {
+		if attempt < attempts-1 {
 			select {
 			case <-ctx.Done():
 				return lastOutput, ctx.Err()
@@ -670,7 +671,7 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode,
 			}
 		}
 	}
-	return lastOutput, fmt.Errorf("job %s did not become healthy on %s within 30 seconds: %s", jobName, expectedNode, lastReason)
+	return lastOutput, fmt.Errorf("job %s did not become healthy on %s within 90 seconds: %s", jobName, expectedNode, lastReason)
 }
 
 func deploymentVerified(raw []byte, jobName, expectedNode, evalID string) (bool, string, error) {
