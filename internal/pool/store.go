@@ -139,6 +139,23 @@ func (s Store) SetAppDNS(name, status, message string) error {
 	return s.SaveState(state)
 }
 
+func (s Store) SetAppImage(name, image string) error {
+	cfg, _, err := s.Load()
+	if err != nil {
+		return err
+	}
+	if !safeImageReference(image) {
+		return errors.New("image must be a registry reference without spaces or shell metacharacters")
+	}
+	for i := range cfg.Apps {
+		if cfg.Apps[i].Name == name {
+			cfg.Apps[i].Image = image
+			return os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o600)
+		}
+	}
+	return fmt.Errorf("unknown app %q", name)
+}
+
 func (s Store) SetNodeJoined(name string, joined bool) error {
 	cfg, state, err := s.Load()
 	if err != nil {

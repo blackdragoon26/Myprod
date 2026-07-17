@@ -241,7 +241,34 @@ From the hosted dashboard:
 10. Wait for Agent Output to report a healthy Nomad allocation on the selected node.
 11. Refresh and verify the app status is `deployed`, then test its public HTTPS URL.
 
-Do not enter secrets or private-registry credentials. This release supports public images and ephemeral container filesystems only; it does not yet model environment variables, encrypted secrets, persistent volumes, application deletion, or configuration edits.
+Do not enter secrets or private-registry credentials. The dashboard accepts
+public images and internal images whose read-only pull credential was already
+installed by an operator on the target node; it never collects registry
+credentials itself. This release does not yet model environment variables,
+encrypted runtime secrets, persistent volumes, application deletion, or
+configuration edits.
+
+### Repository-scoped backend deployments
+
+An external repository may deploy an existing managed application only through
+a dedicated endpoint that is hard-coded to that application and image
+namespace. The P4Lens integration uses:
+
+```txt
+POST /__poolctl/api/deploy/p4lens
+Authorization: Bearer <POOLCTL_P4LENS_DEPLOY_TOKEN>
+{"image":"ghcr.io/openlabnetworks/p4lens-backend@sha256:<64 lowercase hex>"}
+```
+
+The endpoint cannot deploy another application, tag, registry, or mutable image
+reference. It persists the new digest only after Nomad reports a healthy
+allocation on the configured node. Store the token only in
+`/etc/poolctl-agent.env` and the source repository's Actions secret named
+`MYPROD_P4LENS_DEPLOY_TOKEN`; never reuse the dashboard operator token.
+
+Internal GHCR images also require a read-only registry credential configured
+on every eligible target node through Nomad's Docker driver. Do not put that
+credential in the application record, Nomad job, dashboard, or repository.
 
 Registration uses exact-node placement. This constrains one app without reserving the entire worker, so unrelated Nomad applications can share remaining capacity.
 

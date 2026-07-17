@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blackdragoon26/Myprod/internal/pool"
@@ -19,12 +20,19 @@ import (
 
 const defaultAddr = "127.0.0.1:8790"
 
+const (
+	p4LensAppName     = "p4lens-api"
+	p4LensImagePrefix = "ghcr.io/openlabnetworks/p4lens-backend@sha256:"
+)
+
 type server struct {
-	addr     string
-	store    pool.Store
-	token    string
-	runNomad func(context.Context, ...string) (string, error)
-	dns      dnsManager
+	addr        string
+	store       pool.Store
+	token       string
+	deployToken string
+	runNomad    func(context.Context, ...string) (string, error)
+	dns         dnsManager
+	deployMu    sync.Mutex
 }
 
 type nomadNode struct {
@@ -44,6 +52,7 @@ type nomadNode struct {
 type nomadJobStatus struct {
 	Allocations []struct {
 		ID               string `json:"ID"`
+		EvalID           string `json:"EvalID"`
 		JobID            string `json:"JobID"`
 		NodeName         string `json:"NodeName"`
 		ClientStatus     string `json:"ClientStatus"`
@@ -147,17 +156,130 @@ func Serve(args []string) error {
 	if !isLoopback(addr) && len(token) < 32 {
 		return errors.New("POOLCTL_AGENT_TOKEN must be at least 32 characters when binding outside localhost")
 	}
-	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, runNomad: runNomad, dns: newNetlifyDNSFromEnv()}
+	deployToken := strings.TrimSpace(os.Getenv("POOLCTL_P4LENS_DEPLOY_TOKEN"))
+	if deployToken != "" && len(deployToken) < 32 {
+		return errors.New("POOLCTL_P4LENS_DEPLOY_TOKEN must be at least 32 characters")
+	}
+	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, deployToken: deployToken, runNomad: runNomad, dns: newNetlifyDNSFromEnv()}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
 	mux.HandleFunc("/__poolctl/api/status", s.handleStatus)
 	mux.HandleFunc("/__poolctl/api/action", s.handleAction)
 	mux.HandleFunc("/__poolctl/api/apps", s.handleApps)
+	mux.HandleFunc("/__poolctl/api/deploy/p4lens", s.handleP4LensDeploy)
 	mux.HandleFunc("/__poolctl/api/smoke", s.handleSmoke)
 
 	fmt.Printf("poolctl agent listening on http://%s\n", addr)
 	return http.ListenAndServe(addr, withHeaders(mux))
+}
+
+func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
+	if !authorizedToken(w, r, s.deployToken) {
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var req struct {
+		Image string `json:"image"`
+	}
+	if err := decoder.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid deployment: " + err.Error()})
+		return
+	}
+	if !validP4LensImage(req.Image) {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "image must be the immutable openlabnetworks/p4lens-backend sha256 digest"})
+		return
+	}
+	output, err := s.deployP4Lens(r.Context(), req.Image)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error(), Output: output})
+		return
+	}
+	writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
+}
+
+func (s *server) deployP4Lens(ctx context.Context, image string) (string, error) {
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
+
+	cfg, state, err := s.store.Load()
+	if err != nil {
+		return "", err
+	}
+	app, ok := cfg.FindApp(p4LensAppName)
+	if !ok {
+		return "", fmt.Errorf("unknown app %q", p4LensAppName)
+	}
+	if app.ManageDNS && state.Apps[app.Name].DNSStatus != "ready" {
+		return "", fmt.Errorf("managed DNS is %s", state.Apps[app.Name].DNSStatus)
+	}
+	placement := app.PreferNode
+	if placement == "" {
+		placement = "oracle-main"
+	}
+	if nodeState := state.Nodes[placement]; nodeState.Frozen || nodeState.Draining || nodeState.ReservedFor != "" {
+		return "", fmt.Errorf("target node %s is unavailable: frozen=%t draining=%t reserved_for=%q", placement, nodeState.Frozen, nodeState.Draining, nodeState.ReservedFor)
+	}
+	for i := range cfg.Apps {
+		if cfg.Apps[i].Name == app.Name {
+			cfg.Apps[i].Image = image
+			app = cfg.Apps[i]
+			break
+		}
+	}
+	file, err := pool.RenderAppJob(cfg, app.Name)
+	if err != nil {
+		return "", err
+	}
+	tmpDir, err := os.MkdirTemp("", "poolctl-agent-deploy-*")
+	if err != nil {
+		return "", fmt.Errorf("create deployment render directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+	if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
+		return "", err
+	}
+	out, err := s.nomad(ctx, "job", "run", "-detach", tmpDir+"/"+file.Path)
+	if err != nil {
+		return out, err
+	}
+	evalID, err := submittedEvaluationID(out)
+	if err != nil {
+		return out, err
+	}
+	statusOut, err := s.verifyJobDeployment(ctx, app.Name, placement, evalID)
+	if err != nil {
+		return out + "\nDeployment was submitted, but verification failed:\n" + statusOut, err
+	}
+	if err := s.store.SetAppImage(app.Name, image); err != nil {
+		return out, fmt.Errorf("persist deployed image: %w", err)
+	}
+	state.SetApp(app.Name, placement, "deployed")
+	if err := s.store.SaveState(state); err != nil {
+		return out, err
+	}
+	return out + "\nVerified Nomad job status:\n" + statusOut, nil
+}
+
+func validP4LensImage(image string) bool {
+	digest := strings.TrimPrefix(image, p4LensImagePrefix)
+	if digest == image || len(digest) != 64 {
+		return false
+	}
+	for _, char := range digest {
+		if char < '0' || char > '9' {
+			if char < 'a' || char > 'f' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -300,6 +422,9 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if name == "" {
 			return "", errors.New("missing app name")
 		}
+		s.deployMu.Lock()
+		defer s.deployMu.Unlock()
+
 		cfg, state, err := s.store.Load()
 		if err != nil {
 			return "", err
@@ -332,7 +457,11 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if err != nil {
 			return "", err
 		}
-		tmpDir := "/tmp/poolctl-agent-rendered"
+		tmpDir, err := os.MkdirTemp("", "poolctl-agent-deploy-*")
+		if err != nil {
+			return "", fmt.Errorf("create deployment render directory: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
 		if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
 			return "", err
 		}
@@ -340,7 +469,11 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if err != nil {
 			return out, err
 		}
-		statusOut, statusErr := s.verifyJobDeployment(ctx, name, placement)
+		evalID, err := submittedEvaluationID(out)
+		if err != nil {
+			return out, err
+		}
+		statusOut, statusErr := s.verifyJobDeployment(ctx, name, placement, evalID)
 		if statusErr != nil {
 			return out + "\nDeployment was submitted, but verification failed:\n" + statusOut, statusErr
 		}
@@ -500,7 +633,18 @@ func (s *server) nomad(ctx context.Context, args ...string) (string, error) {
 	return s.runNomad(ctx, args...)
 }
 
-func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode string) (string, error) {
+func submittedEvaluationID(output string) (string, error) {
+	for _, line := range strings.Split(output, "\n") {
+		if value, found := strings.CutPrefix(strings.TrimSpace(line), "Evaluation ID:"); found {
+			if evalID := strings.TrimSpace(value); evalID != "" {
+				return evalID, nil
+			}
+		}
+	}
+	return "", errors.New("Nomad submission did not report an evaluation ID")
+}
+
+func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode, evalID string) (string, error) {
 	var lastOutput string
 	var lastReason string
 	for attempt := 0; attempt < 15; attempt++ {
@@ -509,7 +653,7 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode 
 		if err != nil {
 			lastReason = fmt.Sprintf("read job status: %v", err)
 		} else {
-			verified, reason, parseErr := deploymentVerified([]byte(out), jobName, expectedNode)
+			verified, reason, parseErr := deploymentVerified([]byte(out), jobName, expectedNode, evalID)
 			if parseErr != nil {
 				return out, parseErr
 			}
@@ -529,7 +673,7 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode 
 	return lastOutput, fmt.Errorf("job %s did not become healthy on %s within 30 seconds: %s", jobName, expectedNode, lastReason)
 }
 
-func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string, error) {
+func deploymentVerified(raw []byte, jobName, expectedNode, evalID string) (bool, string, error) {
 	var statuses []nomadJobStatus
 	if err := json.Unmarshal(raw, &statuses); err != nil {
 		var status nomadJobStatus
@@ -541,7 +685,7 @@ func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string,
 	seen := 0
 	for _, status := range statuses {
 		for _, allocation := range status.Allocations {
-			if allocation.JobID != jobName {
+			if allocation.JobID != jobName || allocation.EvalID != evalID {
 				continue
 			}
 			seen++
@@ -551,7 +695,7 @@ func deploymentVerified(raw []byte, jobName, expectedNode string) (bool, string,
 		}
 	}
 	if seen == 0 {
-		return false, "no allocations were reported", nil
+		return false, fmt.Sprintf("no allocations were reported for evaluation %s", evalID), nil
 	}
 	return false, fmt.Sprintf("%d allocation(s) exist but none are healthy and running on %s", seen, expectedNode), nil
 }
@@ -705,6 +849,19 @@ func (s *server) authorized(w http.ResponseWriter, r *http.Request) bool {
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
+		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+		return false
+	}
+	return true
+}
+
+func authorizedToken(w http.ResponseWriter, r *http.Request, token string) bool {
+	if token == "" {
+		writeJSON(w, http.StatusServiceUnavailable, response{OK: false, Error: "deployment endpoint is not configured"})
+		return false
+	}
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
 		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return false
 	}
