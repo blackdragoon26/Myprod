@@ -693,6 +693,9 @@ client {
 plugin "docker" {
   config {
     allow_privileged = false
+    auth {
+      config = "/etc/nomad-docker/config.json"
+    }
   }
 }
 `, node.Name, node.OverlayIP, node.OverlayIP)
