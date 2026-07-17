@@ -336,7 +336,7 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if err := pool.WriteRendered(tmpDir, []pool.RenderedFile{file}); err != nil {
 			return "", err
 		}
-		out, err := s.nomad(ctx, "job", "run", tmpDir+"/"+file.Path)
+		out, err := s.nomad(ctx, "job", "run", "-detach", tmpDir+"/"+file.Path)
 		if err != nil {
 			return out, err
 		}
@@ -752,8 +752,11 @@ func runNomad(ctx context.Context, args ...string) (string, error) {
 	if token == "" {
 		return "", errors.New("Nomad ACL token is missing")
 	}
-	fullArgs := append([]string{"env", "NOMAD_ADDR=https://10.44.0.1:4646", "NOMAD_CACERT=/etc/nomad.d/tls/nomad-agent-ca.pem", "NOMAD_TOKEN=" + token, "nomad"}, args...)
-	return run(ctx, "sudo", fullArgs...)
+	return runWithEnv(ctx, []string{
+		"NOMAD_ADDR=https://10.44.0.1:4646",
+		"NOMAD_CACERT=/etc/nomad.d/tls/nomad-agent-ca.pem",
+		"NOMAD_TOKEN=" + token,
+	}, "nomad", args...)
 }
 
 func firstExistingToken() string {
@@ -772,9 +775,14 @@ func mustRun(ctx context.Context, name string, args ...string) string {
 }
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
+	return runWithEnv(ctx, nil, name, args...)
+}
+
+func runWithEnv(ctx context.Context, env []string, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), env...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

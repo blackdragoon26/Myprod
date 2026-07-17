@@ -336,6 +336,9 @@ func TestDeployVerifiesHealthyAllocationBeforeSavingState(t *testing.T) {
 	if !hasCall(calls, "job status -json sample-api") {
 		t.Fatalf("deploy did not verify JSON job status: %#v", calls)
 	}
+	if !hasCall(calls, "job run -detach /tmp/poolctl-agent-rendered/nomad/jobs/sample-api.nomad.hcl") {
+		t.Fatalf("deploy did not submit the job detached: %#v", calls)
+	}
 	if !strings.Contains(out, "Verified Nomad job status") {
 		t.Fatalf("unexpected deploy output %q", out)
 	}
