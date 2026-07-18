@@ -25,6 +25,10 @@ The first target is personal projects, not enterprise high availability.
 - Keep infra overhead low enough that most compute remains available for apps.
 - Make the repo readable as a DevOps portfolio project.
 
+## System Architecture
+<img width="1144" height="1216" alt="poolctl" src="https://github.com/user-attachments/assets/a50486a0-5a0f-4593-b16b-38803c1cbb15" />
+
+
 ## V1 Stack
 
 - Go CLI: `poolctl`
