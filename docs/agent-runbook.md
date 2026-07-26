@@ -255,7 +255,7 @@ unsupported.
 
 An external repository may deploy an existing managed application only through
 a dedicated endpoint that is hard-coded to that application and image
-namespace. The P4Lens integration uses:
+namespace. P4Lens uses:
 
 ```txt
 POST /__poolctl/api/deploy/p4lens
@@ -268,6 +268,20 @@ reference. It persists the new digest only after Nomad reports a healthy
 allocation on the configured node. Store the token only in
 `/etc/poolctl-agent.env` and the source repository's Actions secret named
 `MYPROD_P4LENS_DEPLOY_TOKEN`; never reuse the dashboard operator token.
+
+Cutable uses the same verified deployment path with an independent token and
+an independently constrained application/image pair:
+
+```txt
+POST /__poolctl/api/deploy/cutable
+Authorization: Bearer <POOLCTL_CUTABLE_DEPLOY_TOKEN>
+{"image":"ghcr.io/blackdragoon26/cutable-api@sha256:<64 lowercase hex>"}
+```
+
+Store this token only in `/etc/poolctl-agent.env` and Cutable's Actions secret
+named `MYPROD_CUTABLE_DEPLOY_TOKEN`. A successful request updates the stored
+digest only after the `cutable-api` allocation is healthy, so subsequent
+dashboard actions and automatic deployments use the same verified artifact.
 
 Internal GHCR images also require a read-only registry credential configured
 on every eligible target node through Nomad's Docker driver. Do not put that

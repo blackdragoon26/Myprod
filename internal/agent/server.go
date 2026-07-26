@@ -21,18 +21,21 @@ import (
 const defaultAddr = "127.0.0.1:8790"
 
 const (
-	p4LensAppName     = "p4lens-api"
-	p4LensImagePrefix = "ghcr.io/openlabnetworks/p4lens-backend@sha256:"
+	p4LensAppName      = "p4lens-api"
+	p4LensImagePrefix  = "ghcr.io/openlabnetworks/p4lens-backend@sha256:"
+	cutableAppName     = "cutable-api"
+	cutableImagePrefix = "ghcr.io/blackdragoon26/cutable-api@sha256:"
 )
 
 type server struct {
-	addr        string
-	store       pool.Store
-	token       string
-	deployToken string
-	runNomad    func(context.Context, ...string) (string, error)
-	dns         dnsManager
-	deployMu    sync.Mutex
+	addr               string
+	store              pool.Store
+	token              string
+	deployToken        string
+	cutableDeployToken string
+	runNomad           func(context.Context, ...string) (string, error)
+	dns                dnsManager
+	deployMu           sync.Mutex
 }
 
 type nomadNode struct {
@@ -160,7 +163,15 @@ func Serve(args []string) error {
 	if deployToken != "" && len(deployToken) < 32 {
 		return errors.New("POOLCTL_P4LENS_DEPLOY_TOKEN must be at least 32 characters")
 	}
-	s := &server{addr: addr, store: pool.NewStore(storeDir), token: token, deployToken: deployToken, runNomad: runNomad, dns: newNetlifyDNSFromEnv()}
+	cutableDeployToken := strings.TrimSpace(os.Getenv("POOLCTL_CUTABLE_DEPLOY_TOKEN"))
+	if cutableDeployToken != "" && len(cutableDeployToken) < 32 {
+		return errors.New("POOLCTL_CUTABLE_DEPLOY_TOKEN must be at least 32 characters")
+	}
+	s := &server{
+		addr: addr, store: pool.NewStore(storeDir), token: token,
+		deployToken: deployToken, cutableDeployToken: cutableDeployToken,
+		runNomad: runNomad, dns: newNetlifyDNSFromEnv(),
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
@@ -168,6 +179,7 @@ func Serve(args []string) error {
 	mux.HandleFunc("/__poolctl/api/action", s.handleAction)
 	mux.HandleFunc("/__poolctl/api/apps", s.handleApps)
 	mux.HandleFunc("/__poolctl/api/deploy/p4lens", s.handleP4LensDeploy)
+	mux.HandleFunc("/__poolctl/api/deploy/cutable", s.handleCutableDeploy)
 	mux.HandleFunc("/__poolctl/api/smoke", s.handleSmoke)
 
 	fmt.Printf("poolctl agent listening on http://%s\n", addr)
@@ -175,7 +187,15 @@ func Serve(args []string) error {
 }
 
 func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
-	if !authorizedToken(w, r, s.deployToken) {
+	s.handleScopedDeploy(w, r, s.deployToken, p4LensAppName, p4LensImagePrefix)
+}
+
+func (s *server) handleCutableDeploy(w http.ResponseWriter, r *http.Request) {
+	s.handleScopedDeploy(w, r, s.cutableDeployToken, cutableAppName, cutableImagePrefix)
+}
+
+func (s *server) handleScopedDeploy(w http.ResponseWriter, r *http.Request, token, appName, imagePrefix string) {
+	if !authorizedToken(w, r, token) {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -192,11 +212,11 @@ func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid deployment: " + err.Error()})
 		return
 	}
-	if !validP4LensImage(req.Image) {
-		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "image must be the immutable openlabnetworks/p4lens-backend sha256 digest"})
+	if !validScopedImage(req.Image, imagePrefix) {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: fmt.Sprintf("image must be the immutable %s sha256 digest", strings.TrimSuffix(imagePrefix, "@sha256:"))})
 		return
 	}
-	output, err := s.deployP4Lens(r.Context(), req.Image)
+	output, err := s.deployManagedApp(r.Context(), appName, req.Image)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error(), Output: output})
 		return
@@ -205,6 +225,10 @@ func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) deployP4Lens(ctx context.Context, image string) (string, error) {
+	return s.deployManagedApp(ctx, p4LensAppName, image)
+}
+
+func (s *server) deployManagedApp(ctx context.Context, appName, image string) (string, error) {
 	s.deployMu.Lock()
 	defer s.deployMu.Unlock()
 
@@ -212,9 +236,9 @@ func (s *server) deployP4Lens(ctx context.Context, image string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	app, ok := cfg.FindApp(p4LensAppName)
+	app, ok := cfg.FindApp(appName)
 	if !ok {
-		return "", fmt.Errorf("unknown app %q", p4LensAppName)
+		return "", fmt.Errorf("unknown app %q", appName)
 	}
 	if app.ManageDNS && state.Apps[app.Name].DNSStatus != "ready" {
 		return "", fmt.Errorf("managed DNS is %s", state.Apps[app.Name].DNSStatus)
@@ -268,7 +292,11 @@ func (s *server) deployP4Lens(ctx context.Context, image string) (string, error)
 }
 
 func validP4LensImage(image string) bool {
-	digest := strings.TrimPrefix(image, p4LensImagePrefix)
+	return validScopedImage(image, p4LensImagePrefix)
+}
+
+func validScopedImage(image, imagePrefix string) bool {
+	digest := strings.TrimPrefix(image, imagePrefix)
 	if digest == image || len(digest) != 64 {
 		return false
 	}

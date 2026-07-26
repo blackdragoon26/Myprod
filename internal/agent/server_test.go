@@ -92,6 +92,46 @@ func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 	}
 }
 
+func TestCutableDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
+	store := testStore(t)
+	app := pool.App{
+		Name: cutableAppName, Image: cutableImagePrefix + strings.Repeat("a", 64),
+		Domain: "cutable-api.sankalpjha.dev", Port: 8080, PreferNode: "oracle-main",
+		CPU: 1000, MemoryMB: 1536, HealthPath: "/health",
+	}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	runner := func(_ context.Context, args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		if strings.Join(args, " ") == "job status -json cutable-api" {
+			return `[{"Allocations":[{"EvalID":"eval-cutable","JobID":"cutable-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+		}
+		return "Job registration successful\nEvaluation ID: eval-cutable\n", nil
+	}
+	s := &server{store: store, cutableDeployToken: "cutable-deploy-token", runNomad: runner}
+	image := cutableImagePrefix + strings.Repeat("b", 64)
+	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/deploy/cutable", strings.NewReader(`{"image":"`+image+`"}`))
+	req.Header.Set("Authorization", "Bearer cutable-deploy-token")
+	recorder := httptest.NewRecorder()
+	s.handleCutableDeploy(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+	if !hasCallPrefix(calls, "job run -detach ", "/nomad/jobs/cutable-api.nomad.hcl") {
+		t.Fatalf("deploy calls = %#v", calls)
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := cfg.FindApp(cutableAppName)
+	if got.Image != image || state.Apps[cutableAppName].Status != "deployed" {
+		t.Fatalf("app = %#v state = %#v", got, state.Apps[cutableAppName])
+	}
+}
+
 func TestP4LensDeploysAreSerializedWithUniqueRenderedImages(t *testing.T) {
 	store := testStore(t)
 	app := pool.App{
@@ -190,6 +230,27 @@ func TestP4LensDeployEndpointRejectsOtherImagesAndTokens(t *testing.T) {
 		req.Header.Set("Authorization", "Bearer "+test.token)
 		recorder := httptest.NewRecorder()
 		s.handleP4LensDeploy(recorder, req)
+		if recorder.Code != test.want {
+			t.Fatalf("token=%q image=%q status=%d body=%s", test.token, test.image, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestCutableDeployEndpointRejectsOtherImagesAndTokens(t *testing.T) {
+	s := &server{cutableDeployToken: "cutable-deploy-token"}
+	for _, test := range []struct {
+		token string
+		image string
+		want  int
+	}{
+		{"wrong", cutableImagePrefix + strings.Repeat("a", 64), http.StatusUnauthorized},
+		{"cutable-deploy-token", "ghcr.io/blackdragoon26/other@sha256:" + strings.Repeat("a", 64), http.StatusBadRequest},
+		{"cutable-deploy-token", cutableImagePrefix + strings.Repeat("g", 64), http.StatusBadRequest},
+	} {
+		req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/deploy/cutable", strings.NewReader(`{"image":"`+test.image+`"}`))
+		req.Header.Set("Authorization", "Bearer "+test.token)
+		recorder := httptest.NewRecorder()
+		s.handleCutableDeploy(recorder, req)
 		if recorder.Code != test.want {
 			t.Fatalf("token=%q image=%q status=%d body=%s", test.token, test.image, recorder.Code, recorder.Body.String())
 		}
