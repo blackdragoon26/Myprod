@@ -693,6 +693,9 @@ client {
 plugin "docker" {
   config {
     allow_privileged = false
+    volumes {
+      enabled = true
+    }
     auth {
       config = "/etc/nomad-docker/config.json"
     }

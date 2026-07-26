@@ -449,6 +449,9 @@ func TestRenderNomadServerIncludesDockerRegistryAuth(t *testing.T) {
 	if !strings.Contains(server, `config = "/etc/nomad-docker/config.json"`) {
 		t.Fatalf("Nomad server missing Docker registry auth config:\n%s", server)
 	}
+	if !strings.Contains(server, "volumes {\n      enabled = true\n    }") {
+		t.Fatalf("Nomad server must enable the scoped managed-app secret mount:\n%s", server)
+	}
 }
 
 func TestExtractWireGuardKeyIgnoresCommandOutput(t *testing.T) {
