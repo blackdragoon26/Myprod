@@ -305,6 +305,7 @@ func TestRenderAppJob(t *testing.T) {
 			MemoryMB:   1024,
 			HealthPath: "/healthz",
 			PreferNode: "oracle-main",
+			SecretEnv:  true,
 		}},
 	}, "sample-api")
 	if err != nil {
@@ -328,6 +329,9 @@ func TestRenderAppJob(t *testing.T) {
 	if !strings.Contains(file.Content, "cpu    = 900") || !strings.Contains(file.Content, "memory = 1024") {
 		t.Fatal("expected configured resource reservations")
 	}
+	if !strings.Contains(file.Content, `"/etc/poolctl/apps/sample-api.env:/run/secrets/cutable.env:ro"`) {
+		t.Fatal("expected app-specific runtime environment mount")
+	}
 }
 
 func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
@@ -337,7 +341,7 @@ func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
 	}
 	app := App{
 		Name: "example-api", Image: "ghcr.io/example/api:abc123", Domain: "example-api.example.com",
-		Port: 8080, PreferNode: "oracle-main", CPU: 750, MemoryMB: 768, HealthPath: "/healthz", ManageDNS: true,
+		Port: 8080, PreferNode: "oracle-main", CPU: 750, MemoryMB: 768, HealthPath: "/healthz", ManageDNS: true, SecretEnv: true,
 	}
 	if err := store.AddApp(app); err != nil {
 		t.Fatal(err)
@@ -350,7 +354,7 @@ func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
 	if !ok {
 		t.Fatal("registered app was not persisted")
 	}
-	if got.CPU != 750 || got.MemoryMB != 768 || got.HealthPath != "/healthz" || !got.ManageDNS {
+	if got.CPU != 750 || got.MemoryMB != 768 || got.HealthPath != "/healthz" || !got.ManageDNS || !got.SecretEnv {
 		t.Fatalf("persisted app = %#v", got)
 	}
 	if live := state.Apps["example-api"]; live.Status != "configured" || live.Node != "oracle-main" || live.DNSStatus != "pending" {

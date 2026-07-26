@@ -164,7 +164,7 @@ guide. Never paste a private SSH key into the hosted dashboard.
 
 The app form intentionally does not support:
 
-- secrets or environment variables;
+- secret values through the dashboard (only an operator-installed fixed runtime environment file is supported);
 - private registry credentials;
 - persistent volumes;
 - arbitrary Nomad HCL;

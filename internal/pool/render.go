@@ -1011,6 +1011,13 @@ func renderNomadJob(app App) string {
     }
 `, app.PreferNode)
 	}
+	secretConfig := ""
+	if app.SecretEnv {
+		secretConfig = fmt.Sprintf(`
+        volumes = [
+          "/etc/poolctl/apps/%s.env:/run/secrets/cutable.env:ro",
+        ]`, app.Name)
+	}
 
 	return fmt.Sprintf(`job "%s" {
   datacenters = ["pool"]
@@ -1053,6 +1060,7 @@ func renderNomadJob(app App) string {
       config {
         image = "%s"
         ports = ["http"]
+%s
       }
 
       resources {
@@ -1062,7 +1070,7 @@ func renderNomadJob(app App) string {
     }
   }
 }
-`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, app.Image, app.CPU, app.MemoryMB)
+`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, app.Image, secretConfig, app.CPU, app.MemoryMB)
 }
 
 func userOrUbuntu(node Node) string {

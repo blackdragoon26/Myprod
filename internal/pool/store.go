@@ -438,6 +438,8 @@ func applyAppField(app *App, line string) {
 		app.HealthPath = value(line)
 	case strings.HasPrefix(line, "manage_dns:"):
 		app.ManageDNS = value(line) == "true"
+	case strings.HasPrefix(line, "secret_env:"):
+		app.SecretEnv = value(line) == "true"
 	}
 }
 
@@ -583,6 +585,7 @@ func formatConfig(cfg Config) string {
 		b.WriteString(fmt.Sprintf("      memory_mb: %d\n", app.MemoryMB))
 		b.WriteString(fmt.Sprintf("    health_path: %s\n", app.HealthPath))
 		b.WriteString(fmt.Sprintf("    manage_dns: %t\n", app.ManageDNS))
+		b.WriteString(fmt.Sprintf("    secret_env: %t\n", app.SecretEnv))
 	}
 	return b.String()
 }

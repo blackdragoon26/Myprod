@@ -758,8 +758,15 @@
             <p id="app-dns-note">Myprod will ensure an A record points this hostname to Oracle ingress. Conflicting records are never overwritten.</p>
           </div>
         </div>
+        <div class="toggle-field">
+          <input id="app-secret-env" name="secret_env" type="checkbox">
+          <div>
+            <label for="app-secret-env">Mount operator-installed runtime environment</label>
+            <p>Uses the root-managed file for this exact app under <code>/etc/poolctl/apps</code>. Secret values never pass through this dashboard.</p>
+          </div>
+        </div>
       </div>
-      <div class="form-note">Public images only. DNS credentials remain on Oracle. Secrets, environment variables, and persistent volumes are not stored by this release.</div>
+      <div class="form-note">Public images only. Runtime secret values must be installed separately on the target node by an operator; this form stores only whether the fixed app-specific file is mounted.</div>
       <div id="app-error" class="form-error" role="alert"></div>
       <div class="form-actions">
         <button id="app-cancel" type="button">Cancel</button>
@@ -816,7 +823,7 @@
         </details>
         <details>
           <summary>What is intentionally unsupported?</summary>
-          <div class="faq-answer"><p>The current app form does not store secrets, environment variables, private-registry credentials, persistent volumes, arbitrary Nomad configuration, or create cloud instances. Managed DNS currently supports safe Netlify A-record creation only; it does not edit or delete conflicting records.</p></div>
+          <div class="faq-answer"><p>The app form never accepts secret values. It can only request a fixed app-specific environment file that an operator has installed directly on the target node. Private-registry credentials, persistent volumes, arbitrary Nomad configuration, and cloud-instance creation remain unsupported. Managed DNS currently supports safe Netlify A-record creation only; it does not edit or delete conflicting records.</p></div>
         </details>
       </div>
       <div class="faq-footer">
@@ -878,6 +885,7 @@
     const appSubmit = document.getElementById("app-submit");
     const appNode = document.getElementById("app-node");
     const appManageDNS = document.getElementById("app-manage-dns");
+    const appSecretEnv = document.getElementById("app-secret-env");
     const appDNSNote = document.getElementById("app-dns-note");
     const appError = document.getElementById("app-error");
     const reservationsBody = document.getElementById("reservations-body");
@@ -938,7 +946,8 @@
         Name: app.Name, Image: app.Image, Domain: app.Domain, Port: app.Port,
         PreferNode: app.PreferNode, AllowWorkers: app.AllowWorkers,
         CPU: app.CPU, MemoryMB: app.MemoryMB, HealthPath: app.HealthPath,
-        ManageDNS: Boolean(app.ManageDNS)
+        ManageDNS: Boolean(app.ManageDNS),
+        SecretEnv: Boolean(app.SecretEnv)
       }));
       const nodeState = Object.fromEntries(Object.entries(state.Nodes || {}).map(([name, value]) => [name, {
         Frozen: Boolean(value.Frozen), Draining: Boolean(value.Draining),
@@ -1488,6 +1497,7 @@
       appNode.innerHTML = nodes.map((node) => `<option value="${escapeHTML(node.Name)}">${escapeHTML(node.Name)} · ${escapeHTML(node.Provider || node.Role || "node")}</option>`).join("");
       appManageDNS.disabled = !latestDNS.configured;
       appManageDNS.checked = Boolean(latestDNS.configured);
+      appSecretEnv.checked = false;
       appDNSNote.textContent = latestDNS.configured
         ? `Netlify DNS is configured for ${latestDNS.zone}; records point to ${latestDNS.targetIPv4}.`
         : "DNS automation is unavailable until Netlify credentials are configured on Oracle. You may register with externally managed DNS.";
@@ -1509,7 +1519,8 @@
         CPU: Number(appForm.elements.cpu.value),
         MemoryMB: Number(appForm.elements.memory.value),
         HealthPath: appForm.elements.health.value.trim(),
-        ManageDNS: appManageDNS.checked
+        ManageDNS: appManageDNS.checked,
+        SecretEnv: appSecretEnv.checked
       };
       if (app.ManageDNS) {
         const confirmed = await confirmPowerfulAction("app-dns-sync", app.Name);

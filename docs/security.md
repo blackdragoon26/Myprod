@@ -46,7 +46,13 @@ idempotent exact-host A-record create/verify operation. It refuses the zone apex
 hostnames outside the configured zone, and any conflicting A, AAAA, or CNAME
 record. Record deletion remains manual.
 
-The current form is not a secret-management surface. Public image references are required, and credentials must not be entered into application fields. Private registry credentials, runtime secrets, and environment variables require an encrypted storage and redaction design before they can be exposed through the hosted dashboard.
+The hosted form is not a secret-entry surface. Public image references are
+required, and credentials must never be entered into application fields. An app
+may request the fixed `/etc/poolctl/apps/<validated-app-name>.env` bind mount;
+an operator installs that file directly on the exact target node as
+`65532:65532` with mode `0400`. The dashboard and agent store persist only the
+boolean mount policy, never the file contents or an arbitrary host path.
+Private registry credentials still require separate node-level configuration.
 
 The hosted dashboard may retain a sanitized last-successful status snapshot in
 browser local storage for locked, read-only visibility. The snapshot is limited

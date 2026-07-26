@@ -37,6 +37,7 @@ type App struct {
 	MemoryMB     int
 	HealthPath   string
 	ManageDNS    bool
+	SecretEnv    bool
 }
 
 type State struct {

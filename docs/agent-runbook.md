@@ -241,12 +241,15 @@ From the hosted dashboard:
 10. Wait for Agent Output to report a healthy Nomad allocation on the selected node.
 11. Refresh and verify the app status is `deployed`, then test its public HTTPS URL.
 
-Do not enter secrets or private-registry credentials. The dashboard accepts
-public images and internal images whose read-only pull credential was already
-installed by an operator on the target node; it never collects registry
-credentials itself. This release does not yet model environment variables,
-encrypted runtime secrets, persistent volumes, application deletion, or
-configuration edits.
+Do not enter secrets or private-registry credentials in the dashboard. The
+dashboard accepts public images and internal images whose read-only pull
+credential was already installed by an operator on the target node; it never
+collects registry credentials itself. For an app that explicitly loads
+`/run/secrets/cutable.env`, an operator may first install the fixed
+`/etc/poolctl/apps/<app-name>.env` file on the exact target node as
+`65532:65532` with mode `0400`, then enable the runtime-environment mount.
+Persistent volumes, application deletion, and configuration edits remain
+unsupported.
 
 ### Repository-scoped backend deployments
 

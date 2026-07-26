@@ -53,9 +53,15 @@ project test command and result:
 known limitations:
 ```
 
-If required environment variables, secrets, or persistent volumes are not
-empty, stop and report that the current Myprod app form cannot safely represent
-the workload.
+Applications that require secrets may opt into the fixed, operator-installed
+runtime environment file. The dashboard stores only `secret_env: true`; it
+never receives secret values. Before deployment, an operator must install
+`/etc/poolctl/apps/<app-name>.env` on the exact target node with owner
+`65532:65532` and mode `0400`. The container receives it read-only at
+`/run/secrets/cutable.env`. The application must explicitly load that file.
+
+Persistent volumes remain unsupported. Stop when durable application data
+cannot live in an external managed service.
 
 ## SpliDT Agent Context
 

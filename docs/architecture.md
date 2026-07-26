@@ -91,7 +91,12 @@ V1 is intentionally SSH-first:
 
 Exact-node placement makes architecture and capacity decisions explicit. It does not reserve the whole node; other Nomad workloads may share that node. Whole-machine reservations remain a separate mechanism for privileged host-level work.
 
-The first hosted application release supports public images and ephemeral container filesystems. Secret injection, private registries, environment variables, persistent volumes, application deletion, and rolling configuration edits require additional lifecycle support and are not implied by registration.
+Managed apps may opt into a fixed app-specific runtime environment file that an
+operator installs directly on the target node. Myprod stores only the boolean
+mount policy and derives the host path from the validated app name; the hosted
+dashboard never accepts or returns secret values. Private registries,
+persistent volumes, application deletion, and rolling configuration edits
+remain outside the managed-app lifecycle.
 
 ## Resource Telemetry
 
