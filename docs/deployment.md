@@ -51,7 +51,10 @@ Use this when the Vercel dashboard can access the GitHub account:
 7. Leave output directory empty.
 8. Confirm that pushes to `main` create production deployments.
 
-The dashboard is a static `public/index.html` plus the serverless smoke endpoint at `api/smoke.js`.
+The dashboard is a static `public/index.html`, static assets under
+`public/assets/`, and the serverless smoke endpoint at `api/smoke.js`. Busy
+buttons use `public/assets/waiting-cat.png`; include that asset when checking a
+deployment rather than validating only the HTML response.
 
 ## Oracle Agent Deployment
 

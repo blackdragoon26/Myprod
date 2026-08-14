@@ -128,6 +128,18 @@ deploy, drain, release, or unfreeze.
 Public ingress smoke checks do not require the agent token and continue to
 refresh while the dashboard is locked.
 
+## Dashboard Loading Feedback
+
+An action button shows the waiting-cat indicator while its request is in
+progress. The button remains labeled, is temporarily disabled, and exposes
+`aria-busy=true`; the operation result is still written to the dashboard output
+panel. The cat is presentation only and must never be treated as proof that an
+operation succeeded. Wait for the success message and verify the resulting app,
+Nomad, or node state before starting another infrastructure action.
+
+The optimized dashboard asset lives at `public/assets/waiting-cat.png`. Keep it
+small and transparent because it is downloaded with the static dashboard.
+
 ## Node Actions
 
 - **Freeze** makes a node ineligible for new allocations while existing
