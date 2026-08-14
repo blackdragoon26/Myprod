@@ -724,6 +724,24 @@ func TestValidProjectID(t *testing.T) {
 	}
 }
 
+func TestCORSAllowsDashboardAppEdits(t *testing.T) {
+	handler := withHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodOptions, "/__poolctl/api/apps/resume-builder", nil)
+	req.Header.Set("Origin", "https://myprod-control.vercel.app")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPut)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, req)
+
+	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "https://myprod-control.vercel.app" {
+		t.Fatalf("allow origin = %q", got)
+	}
+	if got := recorder.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPut) {
+		t.Fatalf("allow methods = %q", got)
+	}
+}
+
 func testStore(t *testing.T) pool.Store {
 	t.Helper()
 	store := pool.NewStore(filepath.Join(t.TempDir(), ".poolctl"))
