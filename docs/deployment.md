@@ -57,6 +57,13 @@ The dashboard is a static `public/index.html` plus the serverless smoke endpoint
 
 The static dashboard and Oracle agent are deployed separately. A Git push updates Vercel, but it does not replace `/usr/local/bin/poolctl` on Oracle.
 
+The dashboard must remain compatible during that split rollout. New agent-only
+controls are gated by capabilities returned from the authenticated status
+response. When an older agent omits `managedAppLifecycleV2`, the dashboard keeps
+the original registration and deploy flow, omits new request fields, and hides
+edit, delete, generic image-update, and environment controls. This makes either
+deployment order safe and does not resubmit or restart existing Nomad jobs.
+
 For an agent change:
 
 1. Run `go test ./...`.

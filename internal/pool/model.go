@@ -38,6 +38,7 @@ type App struct {
 	HealthPath   string
 	ManageDNS    bool
 	SecretEnv    bool
+	Env          map[string]string
 }
 
 type State struct {

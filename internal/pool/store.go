@@ -1,6 +1,7 @@
 package pool
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -156,6 +157,69 @@ func (s Store) SetAppImage(name, image string) error {
 	return fmt.Errorf("unknown app %q", name)
 }
 
+func (s Store) UpdateApp(name string, app App) error {
+	cfg, state, err := s.Load()
+	if err != nil {
+		return err
+	}
+	app = appWithDefaults(app)
+	app.Name = name
+	if err := validateApp(cfg, app, name); err != nil {
+		return err
+	}
+	found := false
+	for i := range cfg.Apps {
+		if cfg.Apps[i].Name == name {
+			cfg.Apps[i] = app
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("unknown app %q", name)
+	}
+	current := state.Apps[name]
+	current.Node = app.PreferNode
+	current.Status = "configured"
+	if app.ManageDNS {
+		current.DNSStatus = "pending"
+		current.DNSMessage = "application configuration changed; DNS must be verified"
+	} else {
+		current.DNSStatus = "manual"
+		current.DNSMessage = ""
+	}
+	state.Apps[name] = current
+	if err := os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o600); err != nil {
+		return err
+	}
+	return s.SaveState(state)
+}
+
+func (s Store) DeleteApp(name string) error {
+	cfg, state, err := s.Load()
+	if err != nil {
+		return err
+	}
+	apps := cfg.Apps[:0]
+	found := false
+	for _, app := range cfg.Apps {
+		if app.Name == name {
+			found = true
+			continue
+		}
+		apps = append(apps, app)
+	}
+	if !found {
+		return fmt.Errorf("unknown app %q", name)
+	}
+	cfg.Apps = apps
+	delete(state.Apps, name)
+	if err := os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o600); err != nil {
+		return err
+	}
+	return s.SaveState(state)
+}
+
 func (s Store) SetNodeJoined(name string, joined bool) error {
 	cfg, state, err := s.Load()
 	if err != nil {
@@ -199,13 +263,17 @@ func validateNewNode(cfg Config, node Node) error {
 }
 
 func validateNewApp(cfg Config, app App) error {
+	return validateApp(cfg, app, "")
+}
+
+func validateApp(cfg Config, app App, existingName string) error {
 	if len(app.Name) > 64 {
 		return errors.New("app name must be 64 characters or fewer")
 	}
 	if !safeID(app.Name) {
 		return errors.New("app name may contain only letters, numbers, dash, and underscore")
 	}
-	if _, ok := cfg.FindApp(app.Name); ok {
+	if _, ok := cfg.FindApp(app.Name); ok && app.Name != existingName {
 		return fmt.Errorf("app %q already exists", app.Name)
 	}
 	if len(app.Image) > 255 || !safeImageReference(app.Image) {
@@ -218,7 +286,7 @@ func validateNewApp(cfg Config, app App) error {
 		return errors.New("domain must be a hostname without a scheme, path, or port")
 	}
 	for _, existing := range cfg.Apps {
-		if strings.EqualFold(existing.Domain, app.Domain) {
+		if existing.Name != existingName && strings.EqualFold(existing.Domain, app.Domain) {
 			return fmt.Errorf("domain %q is already used by %s", app.Domain, existing.Name)
 		}
 	}
@@ -240,7 +308,49 @@ func validateNewApp(cfg Config, app App) error {
 	if !cfg.HasNode(app.PreferNode) {
 		return fmt.Errorf("unknown target node %q", app.PreferNode)
 	}
+	if err := validateAppEnv(app.Env); err != nil {
+		return err
+	}
 	return nil
+}
+
+func validateAppEnv(env map[string]string) error {
+	if len(env) > 64 {
+		return errors.New("environment may contain at most 64 variables")
+	}
+	total := 0
+	for key, value := range env {
+		if !validEnvName(key) {
+			return fmt.Errorf("environment variable %q must use letters, numbers, and underscore and must not start with a number", key)
+		}
+		upper := strings.ToUpper(key)
+		for _, marker := range []string{"SECRET", "TOKEN", "PASSWORD", "PASSWD", "PRIVATE_KEY", "API_KEY", "CREDENTIAL"} {
+			if strings.Contains(upper, marker) {
+				return fmt.Errorf("environment variable %q looks secret-bearing; install secrets through the SSH-managed secret path instead", key)
+			}
+		}
+		if len(value) > 4096 || strings.ContainsAny(value, "\x00\r\n") {
+			return fmt.Errorf("environment variable %q must be a single line of at most 4096 bytes", key)
+		}
+		total += len(key) + len(value)
+	}
+	if total > 16<<10 {
+		return errors.New("environment variables may use at most 16 KiB total")
+	}
+	return nil
+}
+
+func validEnvName(raw string) bool {
+	if raw == "" || raw[0] >= '0' && raw[0] <= '9' {
+		return false
+	}
+	for _, r := range raw {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func appWithDefaults(app App) App {
@@ -440,6 +550,8 @@ func applyAppField(app *App, line string) {
 		app.ManageDNS = value(line) == "true"
 	case strings.HasPrefix(line, "secret_env:"):
 		app.SecretEnv = value(line) == "true"
+	case strings.HasPrefix(line, "env_json:"):
+		_ = json.Unmarshal([]byte(rawValue(line)), &app.Env)
 	}
 }
 
@@ -586,6 +698,10 @@ func formatConfig(cfg Config) string {
 		b.WriteString(fmt.Sprintf("    health_path: %s\n", app.HealthPath))
 		b.WriteString(fmt.Sprintf("    manage_dns: %t\n", app.ManageDNS))
 		b.WriteString(fmt.Sprintf("    secret_env: %t\n", app.SecretEnv))
+		if len(app.Env) != 0 {
+			raw, _ := json.Marshal(app.Env)
+			b.WriteString(fmt.Sprintf("    env_json: %s\n", raw))
+		}
 	}
 	return b.String()
 }
@@ -596,6 +712,14 @@ func value(line string) string {
 		return ""
 	}
 	return strings.Trim(strings.TrimSpace(parts[1]), `"`)
+}
+
+func rawValue(line string) string {
+	parts := strings.SplitN(line, ":", 2)
+	if len(parts) != 2 {
+		return ""
+	}
+	return strings.TrimSpace(parts[1])
 }
 
 func atoi(raw string) int {

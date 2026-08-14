@@ -63,6 +63,12 @@ never receives secret values. Before deployment, an operator must install
 Persistent volumes remain unsupported. Stop when durable application data
 cannot live in an external managed service.
 
+Plain, non-secret environment variables may be included in the handoff. If a
+variable name looks credential-bearing (for example, it contains `TOKEN`,
+`PASSWORD`, `SECRET`, `API_KEY`, `PRIVATE_KEY`, or `CREDENTIAL`), or if required
+secrets cannot use the fixed operator-installed file, stop and report that the
+hosted app form cannot safely represent the workload.
+
 ## SpliDT Agent Context
 
 Give the SpliDT agent the following task:
@@ -88,8 +94,8 @@ The public image must contain only the lightweight software-reference backend
 and retained evidence projection. BMv2 live and Tofino-model tooling remain
 outside this container. Generated run data is ephemeral under
 /var/lib/splidt/runs; state that clearly. Do not add secrets. The current server
-defaults to public CORS, so report that boundary rather than inventing an
-environment variable that Myprod cannot yet inject.
+defaults to public CORS, so report that boundary rather than inventing
+configuration the application does not actually support.
 
 Do not register or deploy the image in Myprod. Finish by returning the complete
 Myprod handoff manifest from docs/application-onboarding.md.

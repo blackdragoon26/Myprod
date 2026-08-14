@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -1005,6 +1007,21 @@ WantedBy=timers.target
 func renderNomadJob(app App) string {
 	app = appWithDefaults(app)
 	constraints := ""
+	environment := ""
+	if len(app.Env) != 0 {
+		keys := make([]string, 0, len(app.Env))
+		for key := range app.Env {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		var env strings.Builder
+		env.WriteString("\n      env {\n")
+		for _, key := range keys {
+			fmt.Fprintf(&env, "        %s = %s\n", key, strconv.Quote(app.Env[key]))
+		}
+		env.WriteString("      }\n")
+		environment = env.String()
+	}
 	if app.PreferNode != "" && !app.AllowWorkers {
 		constraints = fmt.Sprintf(`
     constraint {
@@ -1065,6 +1082,7 @@ func renderNomadJob(app App) string {
         ports = ["http"]
 %s
       }
+%s
 
       resources {
         cpu    = %d
@@ -1073,7 +1091,7 @@ func renderNomadJob(app App) string {
     }
   }
 }
-`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, app.Image, secretConfig, app.CPU, app.MemoryMB)
+`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, app.Image, secretConfig, environment, app.CPU, app.MemoryMB)
 }
 
 func userOrUbuntu(node Node) string {

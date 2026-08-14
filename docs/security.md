@@ -47,12 +47,16 @@ hostnames outside the configured zone, and any conflicting A, AAAA, or CNAME
 record. Record deletion remains manual.
 
 The hosted form is not a secret-entry surface. Public image references are
-required, and credentials must never be entered into application fields. An app
-may request the fixed `/etc/poolctl/apps/<validated-app-name>.env` bind mount;
-an operator installs that file directly on the exact target node as
-`65532:65532` with mode `0400`. The dashboard and agent store persist only the
-boolean mount policy, never the file contents or an arbitrary host path.
-Private registry credentials still require separate node-level configuration.
+required, and credentials must never be entered into application fields.
+Bounded non-secret environment variables are supported while secret-shaped
+names are rejected. An app may request the fixed
+`/etc/poolctl/apps/<validated-app-name>.env` bind mount; an operator installs
+that file directly on the exact target node as `65532:65532` with mode `0400`.
+The dashboard and agent store persist only the boolean mount policy, never the
+file contents or an arbitrary host path. Private registry credentials still
+require separate node-level configuration.
+
+Repository-triggered image deployments use app-scoped tokens configured only in Oracle's root-readable agent environment. Each token is bound to one app path, and image updates are restricted to an immutable SHA-256 digest in that app's already registered repository. The full operator token must not be copied into project CI.
 
 The hosted dashboard may retain a sanitized last-successful status snapshot in
 browser local storage for locked, read-only visibility. The snapshot is limited

@@ -33,6 +33,7 @@ type server struct {
 	token              string
 	deployToken        string
 	cutableDeployToken string
+	appDeployTokens    map[string]string
 	runNomad           func(context.Context, ...string) (string, error)
 	dns                dnsManager
 	deployMu           sync.Mutex
@@ -67,16 +68,21 @@ type nomadJobStatus struct {
 }
 
 type response struct {
-	OK        bool           `json:"ok"`
-	Error     string         `json:"error,omitempty"`
-	Output    string         `json:"output,omitempty"`
-	Config    any            `json:"config,omitempty"`
-	State     any            `json:"state,omitempty"`
-	Checks    []check        `json:"checks,omitempty"`
-	System    systemState    `json:"system,omitempty"`
-	Resources []nodeResource `json:"resources,omitempty"`
-	DNS       dnsCapability  `json:"dns"`
-	Updated   string         `json:"updated,omitempty"`
+	OK           bool              `json:"ok"`
+	Error        string            `json:"error,omitempty"`
+	Output       string            `json:"output,omitempty"`
+	Config       any               `json:"config,omitempty"`
+	State        any               `json:"state,omitempty"`
+	Checks       []check           `json:"checks,omitempty"`
+	System       systemState       `json:"system,omitempty"`
+	Resources    []nodeResource    `json:"resources,omitempty"`
+	DNS          dnsCapability     `json:"dns"`
+	Capabilities agentCapabilities `json:"capabilities,omitempty"`
+	Updated      string            `json:"updated,omitempty"`
+}
+
+type agentCapabilities struct {
+	ManagedAppLifecycleV2 bool `json:"managedAppLifecycleV2"`
 }
 
 type check struct {
@@ -167,10 +173,15 @@ func Serve(args []string) error {
 	if cutableDeployToken != "" && len(cutableDeployToken) < 32 {
 		return errors.New("POOLCTL_CUTABLE_DEPLOY_TOKEN must be at least 32 characters")
 	}
+	appDeployTokens, err := parseAppDeployTokens(os.Getenv("POOLCTL_APP_DEPLOY_TOKENS_JSON"))
+	if err != nil {
+		return err
+	}
 	s := &server{
 		addr: addr, store: pool.NewStore(storeDir), token: token,
 		deployToken: deployToken, cutableDeployToken: cutableDeployToken,
-		runNomad: runNomad, dns: newNetlifyDNSFromEnv(),
+		appDeployTokens: appDeployTokens,
+		runNomad:        runNomad, dns: newNetlifyDNSFromEnv(),
 	}
 
 	mux := http.NewServeMux()
@@ -178,6 +189,7 @@ func Serve(args []string) error {
 	mux.HandleFunc("/__poolctl/api/status", s.handleStatus)
 	mux.HandleFunc("/__poolctl/api/action", s.handleAction)
 	mux.HandleFunc("/__poolctl/api/apps", s.handleApps)
+	mux.HandleFunc("/__poolctl/api/apps/", s.handleApp)
 	mux.HandleFunc("/__poolctl/api/deploy/p4lens", s.handleP4LensDeploy)
 	mux.HandleFunc("/__poolctl/api/deploy/cutable", s.handleCutableDeploy)
 	mux.HandleFunc("/__poolctl/api/smoke", s.handleSmoke)
@@ -216,7 +228,7 @@ func (s *server) handleScopedDeploy(w http.ResponseWriter, r *http.Request, toke
 		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: fmt.Sprintf("image must be the immutable %s sha256 digest", strings.TrimSuffix(imagePrefix, "@sha256:"))})
 		return
 	}
-	output, err := s.deployManagedApp(r.Context(), appName, req.Image)
+	output, err := s.deployAppImage(r.Context(), appName, req.Image)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error(), Output: output})
 		return
@@ -225,10 +237,10 @@ func (s *server) handleScopedDeploy(w http.ResponseWriter, r *http.Request, toke
 }
 
 func (s *server) deployP4Lens(ctx context.Context, image string) (string, error) {
-	return s.deployManagedApp(ctx, p4LensAppName, image)
+	return s.deployAppImage(ctx, p4LensAppName, image)
 }
 
-func (s *server) deployManagedApp(ctx context.Context, appName, image string) (string, error) {
+func (s *server) deployAppImage(ctx context.Context, appName, image string) (string, error) {
 	s.deployMu.Lock()
 	defer s.deployMu.Unlock()
 
@@ -239,6 +251,9 @@ func (s *server) deployManagedApp(ctx context.Context, appName, image string) (s
 	app, ok := cfg.FindApp(appName)
 	if !ok {
 		return "", fmt.Errorf("unknown app %q", appName)
+	}
+	if !validImmutableImageUpdate(app.Image, image) {
+		return "", fmt.Errorf("image must be an immutable sha256 digest in the app's existing repository %q", imageRepository(app.Image))
 	}
 	if app.ManageDNS && state.Apps[app.Name].DNSStatus != "ready" {
 		return "", fmt.Errorf("managed DNS is %s", state.Apps[app.Name].DNSStatus)
@@ -289,6 +304,30 @@ func (s *server) deployManagedApp(ctx context.Context, appName, image string) (s
 		return out, err
 	}
 	return out + "\nVerified Nomad job status:\n" + statusOut, nil
+}
+
+func imageRepository(image string) string {
+	repository, _, _ := strings.Cut(image, "@")
+	if colon := strings.LastIndex(repository, ":"); colon > strings.LastIndex(repository, "/") {
+		repository = repository[:colon]
+	}
+	return repository
+}
+
+func validImmutableImageUpdate(current, next string) bool {
+	prefix := imageRepository(current) + "@sha256:"
+	digest := strings.TrimPrefix(next, prefix)
+	if digest == next || len(digest) != 64 {
+		return false
+	}
+	for _, char := range digest {
+		if char < '0' || char > '9' {
+			if char < 'a' || char > 'f' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func validP4LensImage(image string) bool {
@@ -342,7 +381,10 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Checks:    runSmokes(r.Context(), cfg),
 		Resources: s.readNodeResources(r.Context()),
 		DNS:       s.dnsCapability(),
-		Updated:   time.Now().UTC().Format(time.RFC3339),
+		Capabilities: agentCapabilities{
+			ManagedAppLifecycleV2: true,
+		},
+		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
 }
 
@@ -380,6 +422,90 @@ func (s *server) handleApps(w http.ResponseWriter, r *http.Request) {
 		Output:  output,
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
+}
+
+func (s *server) handleApp(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/__poolctl/api/apps/")
+	parts := strings.Split(path, "/")
+	if len(parts) == 0 || parts[0] == "" {
+		writeJSON(w, http.StatusNotFound, response{OK: false, Error: "missing app name"})
+		return
+	}
+	name := parts[0]
+	if len(parts) == 2 && parts[1] == "image" {
+		if !s.authorizedAppDeploy(w, r, name) {
+			return
+		}
+		if r.Method != http.MethodPost {
+			writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
+			return
+		}
+		r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+		decoder := json.NewDecoder(r.Body)
+		decoder.DisallowUnknownFields()
+		var req struct {
+			Image string `json:"image"`
+		}
+		if err := decoder.Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid image update: " + err.Error()})
+			return
+		}
+		cfg, _, err := s.store.Load()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error()})
+			return
+		}
+		app, ok := cfg.FindApp(name)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, response{OK: false, Error: fmt.Sprintf("unknown app %q", name)})
+			return
+		}
+		if !validImmutableImageUpdate(app.Image, req.Image) {
+			writeJSON(w, http.StatusBadRequest, response{OK: false, Error: fmt.Sprintf("image must be an immutable sha256 digest in the app's existing repository %q", imageRepository(app.Image))})
+			return
+		}
+		output, err := s.deployAppImage(r.Context(), name, req.Image)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error(), Output: output})
+			return
+		}
+		writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
+		return
+	}
+	if len(parts) != 1 {
+		writeJSON(w, http.StatusNotFound, response{OK: false, Error: "unknown application endpoint"})
+		return
+	}
+	if !s.authorized(w, r) {
+		return
+	}
+	if r.Method != http.MethodPut {
+		writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var app pool.App
+	if err := decoder.Decode(&app); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid application: " + err.Error()})
+		return
+	}
+	app.AllowWorkers = false
+	if err := s.store.UpdateApp(name, app); err != nil {
+		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+		return
+	}
+	output := fmt.Sprintf("Updated application %s. Deploy the configuration when ready.\n", name)
+	if app.ManageDNS {
+		app.Name = name
+		result, dnsErr := s.syncAppDNS(r.Context(), app)
+		output += fmt.Sprintf("Managed DNS: %s - %s\n", result.Status, result.Message)
+		if dnsErr != nil {
+			output += "Deployment remains blocked until managed DNS is ready.\n"
+		}
+	}
+	writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
 }
 
 func (s *server) handleSmoke(w http.ResponseWriter, r *http.Request) {
@@ -510,6 +636,35 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 			return out, err
 		}
 		return out + "\nVerified Nomad job status:\n" + statusOut, nil
+	case "app-delete":
+		if name == "" {
+			return "", errors.New("missing app name")
+		}
+		s.deployMu.Lock()
+		defer s.deployMu.Unlock()
+		cfg, state, err := s.store.Load()
+		if err != nil {
+			return "", err
+		}
+		app, ok := cfg.FindApp(name)
+		if !ok {
+			return "", fmt.Errorf("unknown app %q", name)
+		}
+		output := ""
+		if state.Apps[name].Status == "deployed" {
+			output, err = s.nomad(ctx, "job", "stop", "-purge", name)
+			if err != nil {
+				return output, fmt.Errorf("stop deployed app before deletion: %w", err)
+			}
+		}
+		if err := s.store.DeleteApp(name); err != nil {
+			return output, err
+		}
+		output += fmt.Sprintf("\nDeleted application %s from Myprod configuration.\n", name)
+		if app.ManageDNS {
+			output += fmt.Sprintf("Managed DNS record for %s was preserved and must be reviewed separately.\n", app.Domain)
+		}
+		return output, nil
 	case "app-render":
 		if name == "" {
 			return "", errors.New("missing app name")
@@ -699,7 +854,48 @@ func (s *server) verifyJobDeployment(ctx context.Context, jobName, expectedNode,
 			}
 		}
 	}
+	diagnostics := s.deploymentDiagnostics(ctx, lastOutput, evalID)
+	if diagnostics != "" {
+		lastOutput += "\nNomad deployment diagnostics:\n" + diagnostics
+	}
 	return lastOutput, fmt.Errorf("job %s did not become healthy on %s within 90 seconds: %s", jobName, expectedNode, lastReason)
+}
+
+func (s *server) deploymentDiagnostics(ctx context.Context, jobStatus, evalID string) string {
+	var sections []string
+	if out, err := s.nomad(ctx, "eval", "status", evalID); err == nil || strings.TrimSpace(out) != "" {
+		sections = append(sections, "$ nomad eval status "+evalID+"\n"+limitDiagnostic(out))
+	}
+	var statuses []nomadJobStatus
+	if err := json.Unmarshal([]byte(jobStatus), &statuses); err != nil {
+		var status nomadJobStatus
+		if json.Unmarshal([]byte(jobStatus), &status) == nil {
+			statuses = []nomadJobStatus{status}
+		}
+	}
+	seen := map[string]bool{}
+	for _, status := range statuses {
+		for _, allocation := range status.Allocations {
+			if allocation.ID == "" || seen[allocation.ID] {
+				continue
+			}
+			seen[allocation.ID] = true
+			out, err := s.nomad(ctx, "alloc", "status", allocation.ID)
+			if err == nil || strings.TrimSpace(out) != "" {
+				sections = append(sections, "$ nomad alloc status "+allocation.ID+"\n"+limitDiagnostic(out))
+			}
+		}
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+func limitDiagnostic(raw string) string {
+	raw = strings.TrimSpace(raw)
+	const max = 12 << 10
+	if len(raw) <= max {
+		return raw
+	}
+	return raw[:max] + "\n... diagnostic output truncated ..."
 }
 
 func deploymentVerified(raw []byte, jobName, expectedNode, evalID string) (bool, string, error) {
@@ -895,6 +1091,45 @@ func authorizedToken(w http.ResponseWriter, r *http.Request, token string) bool 
 		return false
 	}
 	return true
+}
+
+func (s *server) authorizedAppDeploy(w http.ResponseWriter, r *http.Request, appName string) bool {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return false
+	}
+	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+		return true
+	}
+	if scoped := s.appDeployTokens[appName]; scoped != "" && subtle.ConstantTimeCompare([]byte(got), []byte(scoped)) == 1 {
+		return true
+	}
+	writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+	return false
+}
+
+func parseAppDeployTokens(raw string) (map[string]string, error) {
+	tokens := map[string]string{}
+	if strings.TrimSpace(raw) == "" {
+		return tokens, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &tokens); err != nil {
+		return nil, fmt.Errorf("POOLCTL_APP_DEPLOY_TOKENS_JSON must be a JSON object of app names to tokens: %w", err)
+	}
+	if len(tokens) > 64 {
+		return nil, errors.New("POOLCTL_APP_DEPLOY_TOKENS_JSON may configure at most 64 apps")
+	}
+	for name, token := range tokens {
+		if !validProjectID(name) {
+			return nil, fmt.Errorf("POOLCTL_APP_DEPLOY_TOKENS_JSON contains invalid app name %q", name)
+		}
+		if len(strings.TrimSpace(token)) < 32 {
+			return nil, fmt.Errorf("deploy token for app %q must be at least 32 characters", name)
+		}
+		tokens[name] = strings.TrimSpace(token)
+	}
+	return tokens, nil
 }
 
 func readSystemState(ctx context.Context) systemState {

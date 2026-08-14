@@ -165,10 +165,11 @@ guide. Never paste a private SSH key into the hosted dashboard.
 The app form intentionally does not support:
 
 - secret values through the dashboard (only an operator-installed fixed runtime environment file is supported);
+- secret-bearing plain environment variables;
 - private registry credentials;
 - persistent volumes;
 - arbitrary Nomad HCL;
-- app editing or deletion;
+- automatic deletion of an app's external DNS record;
 - cloud-instance creation;
 - DNS record deletion, non-A records, or DNS providers other than Netlify.
 

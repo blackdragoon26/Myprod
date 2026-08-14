@@ -49,6 +49,16 @@ func TestRegisterAppEndpointPersistsWithoutDeploying(t *testing.T) {
 	}
 }
 
+func TestStatusResponseAdvertisesManagedAppLifecycleCapability(t *testing.T) {
+	raw, err := json.Marshal(response{OK: true, Capabilities: agentCapabilities{ManagedAppLifecycleV2: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"capabilities":{"managedAppLifecycleV2":true}`) {
+		t.Fatalf("status response = %s", raw)
+	}
+}
+
 func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 	store := testStore(t)
 	app := pool.App{
@@ -129,6 +139,116 @@ func TestCutableDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 	got, _ := cfg.FindApp(cutableAppName)
 	if got.Image != image || state.Apps[cutableAppName].Status != "deployed" {
 		t.Fatalf("app = %#v state = %#v", got, state.Apps[cutableAppName])
+	}
+}
+
+func TestGenericImageEndpointUpdatesAnyRegisteredAppAfterHealthyDeploy(t *testing.T) {
+	store := testStore(t)
+	current := "traefik/whoami@sha256:" + strings.Repeat("a", 64)
+	if err := store.SetAppImage("sample-api", current); err != nil {
+		t.Fatal(err)
+	}
+	next := "traefik/whoami@sha256:" + strings.Repeat("b", 64)
+	runner := func(_ context.Context, args ...string) (string, error) {
+		if strings.Join(args, " ") == "job status -json sample-api" {
+			return `[{"Allocations":[{"ID":"alloc-new","EvalID":"eval-new","JobID":"sample-api","NodeName":"oracle-main","ClientStatus":"running","DesiredStatus":"run","DeploymentStatus":{"Healthy":true}}]}]`, nil
+		}
+		return "Job registration successful\nEvaluation ID: eval-new\n", nil
+	}
+	s := &server{store: store, token: "operator-token", runNomad: runner}
+	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/apps/sample-api/image", strings.NewReader(`{"image":"`+next+`"}`))
+	req.Header.Set("Authorization", "Bearer operator-token")
+	recorder := httptest.NewRecorder()
+	s.handleApp(recorder, req)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, _ := cfg.FindApp("sample-api")
+	if app.Image != next || state.Apps[app.Name].Status != "deployed" {
+		t.Fatalf("app = %#v state = %#v", app, state.Apps[app.Name])
+	}
+	if validImmutableImageUpdate(next, "ghcr.io/other/repo@sha256:"+strings.Repeat("c", 64)) {
+		t.Fatal("image updates must not cross repository boundaries")
+	}
+}
+
+func TestGenericImageEndpointAcceptsOnlyMatchingScopedDeployToken(t *testing.T) {
+	token := strings.Repeat("t", 32)
+	s := &server{store: testStore(t), token: "operator-token", appDeployTokens: map[string]string{"sample-api": token}}
+	for _, test := range []struct {
+		path string
+		want int
+	}{
+		{"/__poolctl/api/apps/sample-api/image", http.StatusBadRequest},
+		{"/__poolctl/api/apps/other-api/image", http.StatusUnauthorized},
+	} {
+		req := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(`not-json`))
+		req.Header.Set("Authorization", "Bearer "+token)
+		recorder := httptest.NewRecorder()
+		s.handleApp(recorder, req)
+		if recorder.Code != test.want {
+			t.Fatalf("path=%s status=%d body=%s", test.path, recorder.Code, recorder.Body.String())
+		}
+	}
+	if _, err := parseAppDeployTokens(`{"sample-api":"short"}`); err == nil {
+		t.Fatal("short scoped deploy token was accepted")
+	}
+}
+
+func TestDeploymentDiagnosticsIncludeEvaluationAndAllocationStatus(t *testing.T) {
+	runner := func(_ context.Context, args ...string) (string, error) {
+		switch strings.Join(args, " ") {
+		case "eval status eval-bad":
+			return "Placement Failures\nResources exhausted", nil
+		case "alloc status alloc-bad":
+			return "Task Events\nDriver Failure: container exited with code 1", nil
+		default:
+			return "", fmt.Errorf("unexpected Nomad call: %v", args)
+		}
+	}
+	s := &server{runNomad: runner}
+	job := `[{"Allocations":[{"ID":"alloc-bad","EvalID":"eval-bad","JobID":"example-api"}]}]`
+	got := s.deploymentDiagnostics(context.Background(), job, "eval-bad")
+	if !strings.Contains(got, "Resources exhausted") || !strings.Contains(got, "container exited with code 1") {
+		t.Fatalf("diagnostics = %q", got)
+	}
+}
+
+func TestDeleteAppPurgesDeployedJobBeforeRemovingConfiguration(t *testing.T) {
+	store := testStore(t)
+	_, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SetApp("sample-api", "oracle-main", "deployed")
+	if err := store.SaveState(state); err != nil {
+		t.Fatal(err)
+	}
+	var calls [][]string
+	s := &server{store: store, runNomad: func(_ context.Context, args ...string) (string, error) {
+		calls = append(calls, append([]string(nil), args...))
+		return "job stopped", nil
+	}}
+	output, err := s.runAction(context.Background(), "app-delete", "sample-api", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasCall(calls, "job stop -purge sample-api") || !strings.Contains(output, "Deleted application") {
+		t.Fatalf("calls = %#v output = %q", calls, output)
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := cfg.FindApp("sample-api"); ok {
+		t.Fatal("deleted app remains in configuration")
+	}
+	if _, ok := state.Apps["sample-api"]; ok {
+		t.Fatal("deleted app remains in state")
 	}
 }
 

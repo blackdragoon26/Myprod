@@ -121,12 +121,12 @@ Hosted node controls operate on the real Nomad scheduler:
 - **Release** clears project ownership but deliberately leaves the worker frozen until a separate Unfreeze confirmation.
 - **Deploy** submits the rendered job and verifies that Nomad can read its resulting status.
 
-The hosted registration form accepts public images and can request a fixed
-app-specific runtime environment mount. Secret values are installed separately
-on the target node at `/etc/poolctl/apps/<app-name>.env`; they never pass
-through the dashboard or agent store. Private-registry credentials and
-persistent volumes remain unsupported. Do not place credentials in an image
-name, domain, health path, or other application field.
+The hosted app form accepts public images, bounded non-secret environment
+variables, and an optional fixed app-specific runtime environment mount.
+Secret values are installed separately on the target node at
+`/etc/poolctl/apps/<app-name>.env`; they never pass through the dashboard or
+agent store. Private-registry credentials and persistent volumes remain
+unsupported. Do not place credentials in application fields.
 
 Reserved projects appear under **Project Reservations** beside the managed app inventory. They are shown separately because a reserved machine is infrastructure capacity, not evidence that an application has been deployed.
 

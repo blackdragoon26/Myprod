@@ -91,12 +91,14 @@ V1 is intentionally SSH-first:
 
 Exact-node placement makes architecture and capacity decisions explicit. It does not reserve the whole node; other Nomad workloads may share that node. Whole-machine reservations remain a separate mechanism for privileged host-level work.
 
-Managed apps may opt into a fixed app-specific runtime environment file that an
-operator installs directly on the target node. Myprod stores only the boolean
-mount policy and derives the host path from the validated app name; the hosted
-dashboard never accepts or returns secret values. Private registries,
-persistent volumes, application deletion, and rolling configuration edits
-remain outside the managed-app lifecycle.
+The hosted application lifecycle supports public images, editable
+configuration, bounded non-secret environment variables, generic digest
+updates, explicit deletion, and ephemeral container filesystems. Managed apps
+may also opt into a fixed app-specific runtime environment file installed
+directly on the target node; Myprod stores only that boolean mount policy and
+never receives the secret contents. Private registries and persistent volumes
+remain outside the hosted contract. Managed DNS records are preserved when an
+app is deleted and require separate operator review.
 
 ## Resource Telemetry
 

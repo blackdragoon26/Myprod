@@ -248,14 +248,45 @@ collects registry credentials itself. For an app that explicitly loads
 `/run/secrets/cutable.env`, an operator may first install the fixed
 `/etc/poolctl/apps/<app-name>.env` file on the exact target node as
 `65532:65532` with mode `0400`, then enable the runtime-environment mount.
-Persistent volumes, application deletion, and configuration edits remain
-unsupported.
+Plain non-secret environment variables can also be stored and rendered into
+the Nomad task; secret-shaped names are rejected. Persistent volumes remain
+outside the hosted app contract.
 
-### Repository-scoped backend deployments
+Use **Edit** to correct an app's domain, image, target, resources, health path,
+DNS mode, or non-secret environment. Saving marks the app configured; deploy it
+separately. Use **Delete** only after confirmation. A deployed app is stopped
+and purged from Nomad before its configuration is removed. Myprod deliberately
+preserves managed DNS records for separate review.
 
-An external repository may deploy an existing managed application only through
-a dedicated endpoint that is hard-coded to that application and image
-namespace. P4Lens uses:
+### Generic immutable image deployments
+
+Every registered application can update and deploy its image without a Myprod
+code change:
+
+```txt
+POST /__poolctl/api/apps/{name}/image
+Authorization: Bearer <app-scoped deploy token or POOLCTL_AGENT_TOKEN>
+{"image":"ghcr.io/org/repository@sha256:<64 lowercase hex>"}
+```
+
+The new image must use the application's existing repository and an immutable
+SHA-256 digest. Myprod renders and submits that candidate, waits for a healthy
+allocation on the configured node, and only then persists the new digest. A
+failed deployment leaves the stored image unchanged. Failure output includes
+`nomad eval status` and available `nomad alloc status` evidence.
+
+For repository CI, add an app-scoped credential to Oracle's root-readable
+agent environment and restart only `poolctl-agent`:
+
+```txt
+POOLCTL_APP_DEPLOY_TOKENS_JSON={"app-name":"<random token of at least 32 characters>"}
+```
+
+The JSON object can contain multiple apps. A scoped token authorizes only the
+matching path, and the stored image repository is its automatic allowlist. Do
+not give a source repository the dashboard-wide operator token.
+
+The older P4Lens repository integration remains available for compatibility:
 
 ```txt
 POST /__poolctl/api/deploy/p4lens
@@ -263,9 +294,8 @@ Authorization: Bearer <POOLCTL_P4LENS_DEPLOY_TOKEN>
 {"image":"ghcr.io/openlabnetworks/p4lens-backend@sha256:<64 lowercase hex>"}
 ```
 
-The endpoint cannot deploy another application, tag, registry, or mutable image
-reference. It persists the new digest only after Nomad reports a healthy
-allocation on the configured node. Store the token only in
+That compatibility endpoint cannot deploy another application, tag, registry,
+or mutable image reference. Store its scoped token only in
 `/etc/poolctl-agent.env` and the source repository's Actions secret named
 `MYPROD_P4LENS_DEPLOY_TOKEN`; never reuse the dashboard operator token.
 

@@ -342,6 +342,7 @@ func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
 	app := App{
 		Name: "example-api", Image: "ghcr.io/example/api:abc123", Domain: "example-api.example.com",
 		Port: 8080, PreferNode: "oracle-main", CPU: 750, MemoryMB: 768, HealthPath: "/healthz", ManageDNS: true, SecretEnv: true,
+		Env: map[string]string{"RESUMEKIT_REPO_BRANCH": "staging", "PUBLIC_URL": "https://example.com/api"},
 	}
 	if err := store.AddApp(app); err != nil {
 		t.Fatal(err)
@@ -357,8 +358,46 @@ func TestAddAppPersistsValidatedConfiguration(t *testing.T) {
 	if got.CPU != 750 || got.MemoryMB != 768 || got.HealthPath != "/healthz" || !got.ManageDNS || !got.SecretEnv {
 		t.Fatalf("persisted app = %#v", got)
 	}
+	if got.Env["RESUMEKIT_REPO_BRANCH"] != "staging" || got.Env["PUBLIC_URL"] != "https://example.com/api" {
+		t.Fatalf("persisted environment = %#v", got.Env)
+	}
+	file, err := RenderAppJob(cfg, app.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(file.Content, `RESUMEKIT_REPO_BRANCH = "staging"`) || !strings.Contains(file.Content, `PUBLIC_URL = "https://example.com/api"`) {
+		t.Fatalf("rendered job is missing environment:\n%s", file.Content)
+	}
 	if live := state.Apps["example-api"]; live.Status != "configured" || live.Node != "oracle-main" || live.DNSStatus != "pending" {
 		t.Fatalf("app state = %#v", live)
+	}
+}
+
+func TestUpdateAppAllowsCorrectionsAndRejectsSecretShapedEnvironment(t *testing.T) {
+	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	app := App{Name: "example-api", Image: "ghcr.io/example/api:one", Domain: "wrong.example.com", Port: 8080, PreferNode: "oracle-main", HealthPath: "/health"}
+	if err := store.AddApp(app); err != nil {
+		t.Fatal(err)
+	}
+	app.Domain = "correct.example.com"
+	app.Env = map[string]string{"REPO_BRANCH": "feature/test"}
+	if err := store.UpdateApp(app.Name, app); err != nil {
+		t.Fatal(err)
+	}
+	cfg, state, err := store.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := cfg.FindApp(app.Name)
+	if got.Domain != app.Domain || got.Env["REPO_BRANCH"] != "feature/test" || state.Apps[app.Name].Status != "configured" {
+		t.Fatalf("updated app = %#v state = %#v", got, state.Apps[app.Name])
+	}
+	app.Env = map[string]string{"GITHUB_TOKEN": "not-allowed"}
+	if err := store.UpdateApp(app.Name, app); err == nil || !strings.Contains(err.Error(), "secret-bearing") {
+		t.Fatalf("secret-shaped environment error = %v", err)
 	}
 }
 

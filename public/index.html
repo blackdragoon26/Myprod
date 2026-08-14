@@ -237,7 +237,7 @@
     .field { display: grid; gap: 6px; min-width: 0; }
     .field.wide { grid-column: 1 / -1; }
     .field label { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-    .field input, .field select { width: 100%; }
+    .field input, .field select, .field textarea { width: 100%; }
     .toggle-field { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
     .toggle-field input { width: 16px; height: 16px; margin: 2px 0 0; flex: 0 0 auto; accent-color: var(--accent); }
     .toggle-field label { color: var(--text); font-weight: 600; cursor: pointer; }
@@ -751,6 +751,11 @@
           <label for="app-health">Health path</label>
           <input id="app-health" name="health" required maxlength="256" value="/" autocomplete="off">
         </div>
+        <div id="app-env-field" class="field wide" hidden>
+          <label for="app-env">Non-secret environment variables</label>
+          <textarea id="app-env" name="env" rows="4" placeholder="RESUMEKIT_REPO_BRANCH=staging"></textarea>
+          <p>One <code>NAME=value</code> per line. Secret-shaped names such as tokens, passwords, and API keys are rejected.</p>
+        </div>
         <div class="toggle-field">
           <input id="app-manage-dns" name="manage_dns" type="checkbox" checked>
           <div>
@@ -766,7 +771,7 @@
           </div>
         </div>
       </div>
-      <div class="form-note">Public images only. Runtime secret values must be installed separately on the target node by an operator; this form stores only whether the fixed app-specific file is mounted.</div>
+      <div id="app-form-note" class="form-note">Public images only. Runtime secret values must be installed separately on the target node; this form stores only the fixed mount policy.</div>
       <div id="app-error" class="form-error" role="alert"></div>
       <div class="form-actions">
         <button id="app-cancel" type="button">Cancel</button>
@@ -823,7 +828,7 @@
         </details>
         <details>
           <summary>What is intentionally unsupported?</summary>
-          <div class="faq-answer"><p>The app form never accepts secret values. It can only request a fixed app-specific environment file that an operator has installed directly on the target node. Private-registry credentials, persistent volumes, arbitrary Nomad configuration, and cloud-instance creation remain unsupported. Managed DNS currently supports safe Netlify A-record creation only; it does not edit or delete conflicting records.</p></div>
+          <div class="faq-answer"><p>The app form stores bounded non-secret environment variables but never accepts secret values. It can request only a fixed app-specific environment file installed directly on the target node. Private-registry credentials, persistent volumes, arbitrary Nomad configuration, and cloud-instance creation remain unsupported. App deletion preserves external DNS records for separate review.</p></div>
         </details>
       </div>
       <div class="faq-footer">
@@ -887,6 +892,8 @@
     const appManageDNS = document.getElementById("app-manage-dns");
     const appSecretEnv = document.getElementById("app-secret-env");
     const appDNSNote = document.getElementById("app-dns-note");
+    const appEnvField = document.getElementById("app-env-field");
+    const appFormNote = document.getElementById("app-form-note");
     const appError = document.getElementById("app-error");
     const reservationsBody = document.getElementById("reservations-body");
     const resourceGrid = document.getElementById("resource-grid");
@@ -919,7 +926,9 @@
     let agentConnected = false;
     let latestConfig = {};
     let latestDNS = {};
+    let latestCapabilities = {};
     let latencyHistory = [];
+    let editingAppName = "";
 
     try {
       latencyHistory = JSON.parse(sessionStorage.getItem("poolctlLatencyHistory") || "[]");
@@ -938,6 +947,7 @@
       const system = data.System || data.system || {};
       const resources = data.Resources || data.resources || [];
       const dns = data.DNS || data.dns || {};
+      const capabilities = data.Capabilities || data.capabilities || {};
       const nodes = (config.Nodes || []).map((node) => ({
         Name: node.Name, Provider: node.Provider, Role: node.Role,
         PublicIP: node.PublicIP, OverlayIP: node.OverlayIP
@@ -947,7 +957,7 @@
         PreferNode: app.PreferNode, AllowWorkers: app.AllowWorkers,
         CPU: app.CPU, MemoryMB: app.MemoryMB, HealthPath: app.HealthPath,
         ManageDNS: Boolean(app.ManageDNS),
-        SecretEnv: Boolean(app.SecretEnv)
+        SecretEnv: Boolean(app.SecretEnv), Env: app.Env || {}
       }));
       const nodeState = Object.fromEntries(Object.entries(state.Nodes || {}).map(([name, value]) => [name, {
         Frozen: Boolean(value.Frozen), Draining: Boolean(value.Draining),
@@ -968,6 +978,9 @@
         DNS: {
           provider: dns.provider || "", zone: dns.zone || "",
           targetIPv4: dns.targetIPv4 || "", configured: Boolean(dns.configured)
+        },
+        Capabilities: {
+          managedAppLifecycleV2: Boolean(capabilities.managedAppLifecycleV2)
         },
         Resources: resources.map((resource) => ({
           name: resource.name || "", status: resource.status || "",
@@ -1197,6 +1210,7 @@
       if (!res.ok || !data.ok) {
         const error = new Error(data.error || res.statusText);
         error.status = res.status;
+        error.output = data.output || "";
         throw error;
       }
       return data;
@@ -1210,6 +1224,7 @@
       return {
         "control-status": "Control status",
         "app-deploy": `Deploy ${name || "app"}`,
+        "app-delete": `Delete ${name || "app"}`,
         "app-dns-sync": `Check DNS for ${name || "app"}`,
         "node-reserve": `Reserve ${name}`,
         "node-release": `Release ${name}`,
@@ -1234,6 +1249,8 @@
       const system = data.System || data.system || {};
       latestConfig = config;
       latestDNS = data.DNS || data.dns || {};
+      latestCapabilities = data.Capabilities || data.capabilities || {};
+      const managedAppLifecycleV2 = Boolean(latestCapabilities.managedAppLifecycleV2);
       nomadState.innerHTML = statePill(system.nomad || system.Nomad);
       traefikState.innerHTML = statePill(system.traefik || system.Traefik);
       wireguardState.innerHTML = statePill(system.wireguard || system.WireGuard);
@@ -1256,7 +1273,10 @@
           <td>${statePill(live.Status || "configured")}</td>
           <td><div class="actions">
             ${app.ManageDNS && !dnsReady ? `<button data-action="app-dns-sync" data-name="${escapeHTML(app.Name)}">Check DNS</button>` : ""}
+            ${managedAppLifecycleV2 ? `<button data-edit-app="${escapeHTML(app.Name)}">Edit</button>` : ""}
+            ${managedAppLifecycleV2 ? `<button data-image-update="${escapeHTML(app.Name)}">Update image</button>` : ""}
             <button data-action="app-deploy" data-name="${escapeHTML(app.Name)}" data-requires-dns="${dnsReady ? "false" : "true"}" ${dnsReady ? "" : "disabled"}>Deploy</button>
+            ${managedAppLifecycleV2 ? `<button class="danger" data-action="app-delete" data-name="${escapeHTML(app.Name)}">Delete</button>` : ""}
           </div></td>
         </tr>`;
       }).join("") || `<tr><td colspan="8" class="muted">No apps configured.</td></tr>`;
@@ -1354,7 +1374,7 @@
     function setActionBusy(active, button) {
       actionRunning = active;
       output.setAttribute("aria-busy", String(active));
-      document.querySelectorAll("[data-action]").forEach((candidate) => {
+      document.querySelectorAll("[data-action], [data-edit-app], [data-image-update]").forEach((candidate) => {
         candidate.disabled = active || !agentConnected || candidate.dataset.requiresDns === "true";
         if (!active) candidate.classList.remove("is-loading");
       });
@@ -1375,6 +1395,12 @@
           body: "Myprod will call Netlify DNS and ensure this app hostname has an A record pointing to Oracle ingress.",
           warning: "Are you sure? This can create an external DNS record. Existing conflicting A, AAAA, or CNAME records will not be overwritten.",
           label: "Create / verify DNS"
+        },
+        "app-delete": {
+          title: `Delete ${name}?`,
+          body: "If deployed, Myprod will stop and purge the Nomad job before removing its saved configuration and state.",
+          warning: "Are you sure? Public traffic will stop. Managed DNS is deliberately preserved for separate operator review.",
+          label: "Delete"
         },
         "node-freeze": {
           title: `Freeze ${name}?`,
@@ -1466,7 +1492,7 @@
         output.textContent = actionMessage(action, name, data);
         await refreshAgent({ silent: true });
       } catch (error) {
-        output.textContent = `Action failed: ${error.message}`;
+        output.textContent = `Action failed: ${error.message}${error.output ? `\n\n${error.output}` : ""}`;
       } finally {
         setActionBusy(false);
       }
@@ -1480,20 +1506,40 @@
         button.dataset.bound = "true";
         button.addEventListener("click", () => runAction(button));
       });
+      document.querySelectorAll("[data-edit-app]").forEach((button) => {
+        if (button.dataset.bound === "true") return;
+        button.dataset.bound = "true";
+        button.disabled = !unlocked || actionRunning;
+        button.addEventListener("click", () => openAppDialog(button.dataset.editApp));
+      });
+      document.querySelectorAll("[data-image-update]").forEach((button) => {
+        if (button.dataset.bound === "true") return;
+        button.dataset.bound = "true";
+        button.disabled = !unlocked || actionRunning;
+        button.addEventListener("click", () => updateApplicationImage(button));
+      });
     }
 
     function closeAppDialog() {
       appDialog.close();
       appError.textContent = "";
       appForm.reset();
+      editingAppName = "";
+      appForm.elements.name.disabled = false;
     }
 
     function closeFAQ() {
       faqDialog.close();
     }
 
-    function openAppDialog() {
+    function openAppDialog(name = "") {
       const nodes = latestConfig.Nodes || [];
+      const managedAppLifecycleV2 = Boolean(latestCapabilities.managedAppLifecycleV2);
+      appEnvField.hidden = !managedAppLifecycleV2;
+      appForm.elements.env.disabled = !managedAppLifecycleV2;
+      appFormNote.textContent = managedAppLifecycleV2
+        ? "Public images only. Plain non-secret environment variables are stored in app configuration; secret values remain in the operator-installed fixed mount."
+        : "Connected agent supports registration, deployment, and the operator-installed secret mount. Edit, delete, generic image updates, and plain environment variables will appear after the agent is upgraded.";
       appNode.innerHTML = nodes.map((node) => `<option value="${escapeHTML(node.Name)}">${escapeHTML(node.Name)} · ${escapeHTML(node.Provider || node.Role || "node")}</option>`).join("");
       appManageDNS.disabled = !latestDNS.configured;
       appManageDNS.checked = Boolean(latestDNS.configured);
@@ -1502,6 +1548,24 @@
         ? `Netlify DNS is configured for ${latestDNS.zone}; records point to ${latestDNS.targetIPv4}.`
         : "DNS automation is unavailable until Netlify credentials are configured on Oracle. You may register with externally managed DNS.";
       appError.textContent = "";
+      editingAppName = name;
+      const app = (latestConfig.Apps || []).find((candidate) => candidate.Name === name);
+      document.getElementById("app-dialog-title").textContent = app ? `Edit ${name}` : "Add application";
+      appSubmit.textContent = app ? "Save application" : "Register application";
+      if (app) {
+        appForm.elements.name.value = app.Name;
+        appForm.elements.name.disabled = true;
+        appForm.elements.domain.value = app.Domain || "";
+        appForm.elements.image.value = app.Image || "";
+        appForm.elements.node.value = app.PreferNode || "";
+        appForm.elements.port.value = app.Port || 8080;
+        appForm.elements.cpu.value = app.CPU || 500;
+        appForm.elements.memory.value = app.MemoryMB || 512;
+        appForm.elements.health.value = app.HealthPath || "/";
+        appForm.elements.env.value = Object.entries(app.Env || {}).sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => `${key}=${value}`).join("\n");
+        appManageDNS.checked = Boolean(app.ManageDNS);
+        appSecretEnv.checked = Boolean(app.SecretEnv);
+      }
       appDialog.showModal();
       document.getElementById("app-name").focus();
     }
@@ -1509,8 +1573,19 @@
     async function registerApplication(event) {
       event.preventDefault();
       if (!appForm.reportValidity()) return;
+      const env = {};
+      for (const [index, raw] of appForm.elements.env.value.split("\n").entries()) {
+        const line = raw.trim();
+        if (!line) continue;
+        const separator = line.indexOf("=");
+        if (separator < 1) {
+          appError.textContent = `Environment line ${index + 1} must use NAME=value.`;
+          return;
+        }
+        env[line.slice(0, separator).trim()] = line.slice(separator + 1);
+      }
       const app = {
-        Name: appForm.elements.name.value.trim(),
+        Name: editingAppName || appForm.elements.name.value.trim(),
         Image: appForm.elements.image.value.trim(),
         Domain: appForm.elements.domain.value.trim().toLowerCase(),
         Port: Number(appForm.elements.port.value),
@@ -1522,6 +1597,7 @@
         ManageDNS: appManageDNS.checked,
         SecretEnv: appSecretEnv.checked
       };
+      if (latestCapabilities.managedAppLifecycleV2) app.Env = env;
       if (app.ManageDNS) {
         const confirmed = await confirmPowerfulAction("app-dns-sync", app.Name);
         if (confirmed === null) return;
@@ -1532,7 +1608,8 @@
       setActionBusy(true);
       output.textContent = `Registering ${app.Name}...`;
       try {
-        const data = await agentFetch("/apps", { method: "POST", body: JSON.stringify(app) });
+        const endpoint = editingAppName ? `/apps/${encodeURIComponent(editingAppName)}` : "/apps";
+        const data = await agentFetch(endpoint, { method: editingAppName ? "PUT" : "POST", body: JSON.stringify(app) });
         closeAppDialog();
         output.textContent = `${(data.output || "Application registered.").trim()}\n\nRegistration changed configuration only. Use Deploy when the image and DNS are ready.`;
         await refreshAgent({ silent: true });
@@ -1543,6 +1620,29 @@
         setActionBusy(false);
         appSubmit.disabled = false;
         appSubmit.classList.remove("is-loading");
+      }
+    }
+
+    async function updateApplicationImage(button) {
+      const name = button.dataset.imageUpdate;
+      const app = (latestConfig.Apps || []).find((candidate) => candidate.Name === name);
+      const image = window.prompt(`New immutable sha256 image for ${name}`, app?.Image || "");
+      if (image === null || image.trim() === "" || image.trim() === app?.Image) return;
+      const confirmed = await confirmPowerfulAction("app-deploy", name);
+      if (confirmed === null) return;
+      setActionBusy(true, button);
+      output.textContent = `Updating and deploying ${name}...`;
+      try {
+        const data = await agentFetch(`/apps/${encodeURIComponent(name)}/image`, {
+          method: "POST",
+          body: JSON.stringify({ image: image.trim() })
+        });
+        output.textContent = `Updated ${name} to ${image.trim()}.\n\n${data.output || "Nomad verified the new allocation."}`;
+        await refreshAgent({ silent: true });
+      } catch (error) {
+        output.textContent = `Image update failed: ${error.message}${error.output ? `\n\n${error.output}` : ""}`;
+      } finally {
+        setActionBusy(false);
       }
     }
 
@@ -1605,7 +1705,7 @@
       if (event.key === "Enter") unlockAgent();
     });
     refresh.addEventListener("click", refreshAll);
-    addApp.addEventListener("click", openAppDialog);
+    addApp.addEventListener("click", () => openAppDialog());
     faqOpen.addEventListener("click", () => faqDialog.showModal());
     faqClose.addEventListener("click", closeFAQ);
     faqDone.addEventListener("click", closeFAQ);
