@@ -233,6 +233,20 @@
     .confirm-error { min-height: 18px; margin-top: 6px; color: var(--bad); font-size: 12px; }
     .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
+    /* ---------- Email OTP ---------- */
+    .auth-dialog { width: min(420px, calc(100vw - 32px)); }
+    .auth-form { padding: 22px; }
+    .auth-form-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; }
+    .auth-form-head h2 { color: var(--text); font-size: 18px; letter-spacing: 0; text-transform: none; }
+    .auth-form-head p, .auth-copy { margin-top: 7px; color: var(--text-muted); font-size: 13px; }
+    .auth-step { display: grid; gap: 12px; margin-top: 20px; }
+    .auth-step label { color: var(--text); font-size: 13px; font-weight: 600; }
+    .auth-step input { width: 100%; height: 42px; }
+    .auth-code { letter-spacing: .35em; text-align: center; font: 600 18px/1 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .auth-submit { width: 100%; height: 42px; justify-content: center; }
+    .auth-secondary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+    .auth-error { min-height: 20px; color: var(--bad); font-size: 12px; }
+
     .app-dialog { width: min(720px, calc(100vw - 32px)); }
     .app-form { padding: 20px; }
     .app-form-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
@@ -649,7 +663,7 @@
               <span id="resource-mode" class="pill plain muted">Live Nomad client stats</span>
             </div>
             <div id="resource-grid" class="resource-grid">
-              <div class="empty">Unlock to load node resources.</div>
+              <div class="empty">Sign in to load node resources.</div>
             </div>
           </section>
 
@@ -664,7 +678,7 @@
             <div class="table-wrap"><table>
               <thead><tr><th>Name</th><th>Image</th><th>Domain</th><th>DNS</th><th>Node</th><th>Reservation</th><th>Status</th><th>Action</th></tr></thead>
               <tbody id="apps-body">
-                <tr><td colspan="8" class="muted">Unlock to load live apps.</td></tr>
+                <tr><td colspan="8" class="muted">Sign in to load live apps.</td></tr>
               </tbody>
             </table></div>
             <div class="inventory-section">
@@ -673,7 +687,7 @@
               <div class="table-wrap"><table>
                 <thead><tr><th>Project</th><th>Worker</th><th>Isolation</th><th>Status</th></tr></thead>
                 <tbody id="reservations-body">
-                  <tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>
+                  <tr><td colspan="4" class="muted">Sign in to load project reservations.</td></tr>
                 </tbody>
               </table></div>
             </div>
@@ -685,14 +699,14 @@
               <span id="node-capability" class="pill warn">locked</span>
             </div>
             <div id="node-list" class="node-cards">
-              <div class="empty">Unlock to load live nodes.</div>
+              <div class="empty">Sign in to load live nodes.</div>
             </div>
           </section>
 
           <section id="actions" class="span-7 card">
             <div class="card-head"><h2>Node Actions</h2></div>
             <div id="node-actions" class="node-cards">
-              <div class="empty">Unlock to load node controls.</div>
+              <div class="empty">Sign in to load node controls.</div>
             </div>
           </section>
 
@@ -701,7 +715,7 @@
               <h2>Agent Output</h2>
               <button id="copy-output">Copy</button>
             </div>
-            <pre id="output">Agent is locked. Enter the Oracle agent token to enable hosted operations.</pre>
+            <pre id="output">Sign in with your invited email to enable hosted operations. Recovery token remains available.</pre>
           </section>
         </div>
         <footer class="site-footer">
@@ -716,6 +730,34 @@
       </div>
     </div>
   </main>
+
+  <dialog id="auth-dialog" class="auth-dialog" aria-labelledby="auth-dialog-title">
+    <div class="auth-form">
+      <div class="auth-form-head">
+        <div>
+          <h2 id="auth-dialog-title">Sign in to Myprod</h2>
+          <p>Passwordless access for the invited operator.</p>
+        </div>
+        <button id="auth-close" class="icon" type="button" aria-label="Close" title="Close">&times;</button>
+      </div>
+      <form id="auth-email-form" class="auth-step">
+        <label for="auth-email">Email address</label>
+        <input id="auth-email" type="email" required autocomplete="email" placeholder="you@example.com">
+        <button id="auth-send" class="primary auth-submit" type="submit">Email me a code</button>
+      </form>
+      <form id="auth-code-form" class="auth-step" hidden>
+        <p class="auth-copy">Enter the six-digit code sent to <strong id="auth-email-summary"></strong>.</p>
+        <label for="auth-code">One-time code</label>
+        <input id="auth-code" class="auth-code" type="text" required inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6" placeholder="000000">
+        <button id="auth-verify" class="primary auth-submit" type="submit">Verify and sign in</button>
+        <div class="auth-secondary">
+          <button id="auth-change-email" type="button">Change email</button>
+          <button id="auth-resend" type="button">Send a new code</button>
+        </div>
+      </form>
+      <div id="auth-error" class="auth-error" role="alert" aria-live="polite"></div>
+    </div>
+  </dialog>
 
   <dialog id="confirmation-dialog" aria-labelledby="confirmation-title">
     <div class="confirm-dialog">
@@ -940,6 +982,18 @@
     const clerkUser = document.getElementById("clerk-user");
     const recoveryToggle = document.getElementById("recovery-toggle");
     const recoveryControls = document.getElementById("recovery-controls");
+    const authDialog = document.getElementById("auth-dialog");
+    const authClose = document.getElementById("auth-close");
+    const authEmailForm = document.getElementById("auth-email-form");
+    const authEmail = document.getElementById("auth-email");
+    const authSend = document.getElementById("auth-send");
+    const authCodeForm = document.getElementById("auth-code-form");
+    const authCode = document.getElementById("auth-code");
+    const authVerify = document.getElementById("auth-verify");
+    const authEmailSummary = document.getElementById("auth-email-summary");
+    const authChangeEmail = document.getElementById("auth-change-email");
+    const authResend = document.getElementById("auth-resend");
+    const authError = document.getElementById("auth-error");
     const authResult = document.getElementById("auth-result");
     const output = document.getElementById("output");
     const copyOutput = document.getElementById("copy-output");
@@ -1053,6 +1107,112 @@
       });
     }
 
+    function clerkErrorMessage(error) {
+      return error?.longMessage || error?.message || "Clerk could not complete that request.";
+    }
+
+    function showEmailStep() {
+      authEmailForm.hidden = false;
+      authCodeForm.hidden = true;
+      authCode.value = "";
+      authError.textContent = "";
+      authError.style.color = "";
+      authEmail.focus();
+    }
+
+    function showCodeStep() {
+      authEmailForm.hidden = true;
+      authCodeForm.hidden = false;
+      authEmailSummary.textContent = authEmail.value.trim();
+      authError.textContent = "";
+      authError.style.color = "";
+      authCode.focus();
+    }
+
+    async function resetClerkSignIn() {
+      const signIn = window.Clerk?.client?.signIn;
+      if (signIn?.reset) await signIn.reset();
+    }
+
+    async function openAuthDialog() {
+      if (!clerkReady) return;
+      await resetClerkSignIn();
+      authDialog.showModal();
+      showEmailStep();
+    }
+
+    async function closeAuthDialog() {
+      await resetClerkSignIn();
+      authDialog.close();
+    }
+
+    async function sendEmailCode(event) {
+      event?.preventDefault();
+      const emailAddress = authEmail.value.trim();
+      if (!authEmail.reportValidity() || !emailAddress) return;
+      authSend.disabled = true;
+      setButtonLoading(authSend, true);
+      authError.textContent = "";
+      try {
+        const signIn = window.Clerk.client.signIn;
+        await signIn.reset();
+        const created = await signIn.create({ identifier: emailAddress, signUpIfMissing: true });
+        if (created.error) throw created.error;
+        const sent = await signIn.emailCode.sendCode();
+        if (sent.error) throw sent.error;
+        showCodeStep();
+      } catch (error) {
+        authError.textContent = clerkErrorMessage(error);
+      } finally {
+        authSend.disabled = false;
+        setButtonLoading(authSend, false);
+      }
+    }
+
+    async function verifyEmailCode(event) {
+      event.preventDefault();
+      const code = authCode.value.trim();
+      if (!authCode.reportValidity() || !code) return;
+      authVerify.disabled = true;
+      setButtonLoading(authVerify, true);
+      authError.textContent = "";
+      try {
+        const signIn = window.Clerk.client.signIn;
+        const verified = await signIn.emailCode.verifyCode({ code });
+        if (verified.error) throw verified.error;
+        if (signIn.status !== "complete") throw new Error("Additional account verification is required.");
+        await signIn.finalize({
+          navigate: async ({ session, decorateUrl }) => {
+            if (session?.currentTask) throw new Error("Complete the pending Clerk account task before opening Myprod.");
+            window.location.assign(decorateUrl("/"));
+          }
+        });
+      } catch (error) {
+        authError.textContent = clerkErrorMessage(error);
+        authCode.focus();
+        authCode.select();
+      } finally {
+        authVerify.disabled = false;
+        setButtonLoading(authVerify, false);
+      }
+    }
+
+    async function resendEmailCode() {
+      authResend.disabled = true;
+      authError.textContent = "";
+      try {
+        const sent = await window.Clerk.client.signIn.emailCode.sendCode();
+        if (sent.error) throw sent.error;
+        authError.textContent = "A new code was sent.";
+        authError.style.color = "var(--ok)";
+        setTimeout(() => { authError.style.color = ""; }, 1500);
+      } catch (error) {
+        authError.textContent = clerkErrorMessage(error);
+      } finally {
+        authResend.disabled = false;
+      }
+    }
+
     async function initializeClerkAuth() {
       try {
         const response = await fetch("/api/auth-config", { cache: "no-store" });
@@ -1061,19 +1221,10 @@
           throw new Error(config.error || "Sign-in is unavailable");
         }
         const base = `https://${config.frontendAPI}`;
-        await loadClerkScript(`${base}/npm/@clerk/ui@1/dist/ui.browser.js`);
         await loadClerkScript(`${base}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, {
           "data-clerk-publishable-key": config.publishableKey
         });
-        await window.Clerk.load({
-          ui: { ClerkUI: window.__internal_ClerkUICtor },
-          appearance: {
-            variables: {
-              colorPrimary: "#e6654e",
-              borderRadius: "6px"
-            }
-          }
-        });
+        await window.Clerk.load();
         clerkReady = true;
         window.Clerk.addListener(() => {
           syncAuthControls();
@@ -1267,13 +1418,13 @@
       wireguardState.textContent = "locked";
       controlSummary.textContent = "locked";
       workerSummary.textContent = "locked";
-      appsBody.innerHTML = `<tr><td colspan="8" class="muted">Unlock to load live apps.</td></tr>`;
-      reservationsBody.innerHTML = `<tr><td colspan="4" class="muted">Unlock to load project reservations.</td></tr>`;
-      resourceGrid.innerHTML = `<div class="empty">Unlock to load node resources.</div>`;
+      appsBody.innerHTML = `<tr><td colspan="8" class="muted">Sign in to load live apps.</td></tr>`;
+      reservationsBody.innerHTML = `<tr><td colspan="4" class="muted">Sign in to load project reservations.</td></tr>`;
+      resourceGrid.innerHTML = `<div class="empty">Sign in to load node resources.</div>`;
       resourceMode.textContent = "Agent locked";
       resourceMode.className = "pill plain muted";
-      nodeList.innerHTML = `<div class="empty">Unlock to load live nodes.</div>`;
-      nodeActions.innerHTML = `<div class="empty">Unlock to load node controls.</div>`;
+      nodeList.innerHTML = `<div class="empty">Sign in to load live nodes.</div>`;
+      nodeActions.innerHTML = `<div class="empty">Sign in to load node controls.</div>`;
     }
 
     function setUnlocked(unlocked) {
@@ -1508,7 +1659,7 @@
         renderAgent(data);
         if (!options.silent) {
           output.textContent = JSON.stringify(data, null, 2);
-        } else if (output.textContent.startsWith("Agent is locked")) {
+        } else if (output.textContent.startsWith("Sign in with")) {
           output.textContent = "Agent connected. Live pool state was restored from this browser's saved session.";
         }
       } catch (error) {
@@ -1987,10 +2138,13 @@
 
     saveToken.addEventListener("click", unlockAgent);
     lockAgent.addEventListener("click", lockAgentSession);
-    clerkSignIn.addEventListener("click", () => {
-      if (!clerkReady) return;
-      window.Clerk.openSignIn();
-    });
+    clerkSignIn.addEventListener("click", openAuthDialog);
+    authClose.addEventListener("click", closeAuthDialog);
+    authDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeAuthDialog(); });
+    authEmailForm.addEventListener("submit", sendEmailCode);
+    authCodeForm.addEventListener("submit", verifyEmailCode);
+    authChangeEmail.addEventListener("click", async () => { await resetClerkSignIn(); showEmailStep(); });
+    authResend.addEventListener("click", resendEmailCode);
     recoveryToggle.addEventListener("click", () => {
       recoveryVisible = !recoveryVisible;
       syncAuthControls();

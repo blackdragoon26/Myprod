@@ -17,9 +17,12 @@ separate credential classes:
 
 `GET /api/auth-config` returns only Clerk's publishable key and derived Frontend
 API hostname. It never returns `CLERK_SECRET_KEY`. The static page loads ClerkJS
-from that first-party Frontend API, opens Clerk's sign-in component, and sends a
-short-lived session JWT in `Authorization: Bearer` for cross-origin calls to the
-Oracle agent. Session tokens are kept by Clerk and are not copied to local
+from that first-party Frontend API and presents a focused custom flow: enter the
+invited email, receive a one-time code, verify the six digits, and finalize the
+Clerk session. Password authentication is deliberately omitted from Myprod's
+UI even if it is enabled elsewhere in the Clerk instance. The browser sends a
+short-lived session JWT in `Authorization: Bearer` for cross-origin calls to
+the Oracle agent. Session tokens are kept by Clerk and are not copied to local
 storage.
 
 The legacy `POOLCTL_AGENT_TOKEN` remains available through **Recovery token**.
