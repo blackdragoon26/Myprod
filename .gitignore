@@ -5,3 +5,7 @@ work/
 outputs/
 /poolctl
 *.test
+.vercel
+.env*
+.agents/
+skills-lock.json

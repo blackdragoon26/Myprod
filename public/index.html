@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="Hosted control surface for the Myprod personal compute pool.">
   <meta name="author" content="Sankalp Jha">
-  <link rel="canonical" href="https://myprod-control.vercel.app/">
+  <link rel="canonical" href="https://control.sankalpjha.dev/">
   <title>Myprod Control</title>
   <style>
     /* ---------- Design tokens ---------- */
@@ -142,7 +142,9 @@
     }
     .header-title p { color: var(--text-muted); margin-top: 4px; font-size: 13px; }
     .top-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; align-items: center; }
-    .auth-controls { display: flex; align-items: center; gap: 8px; }
+    .auth-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
+    .recovery-controls { display: flex; align-items: center; gap: 8px; }
+    .auth-user { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .auth-result { min-width: 74px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
     .auth-result.ok { color: var(--ok); }
     .auth-result.bad { color: var(--bad); }
@@ -504,7 +506,8 @@
       header { gap: 10px; }
       .top-actions { display: grid; grid-template-columns: 1fr auto; }
       .auth-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-column: 1 / -1; }
-      .auth-controls input { width: 100%; }
+      .auth-controls input, .recovery-controls { width: 100%; }
+      .recovery-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-column: 1 / -1; }
       .auth-result { grid-column: 1 / -1; }
       .summary-row, .status-grid, .resource-grid, .form-grid { grid-template-columns: 1fr; }
 	  .token-mint, .token-secret-row { grid-template-columns: 1fr; }
@@ -553,10 +556,15 @@
           </div>
           <div class="top-actions">
             <div class="auth-controls">
-              <input id="token" type="password" placeholder="Agent token" autocomplete="off" aria-describedby="auth-result">
-              <button id="save-token" class="primary">Unlock</button>
+              <span id="clerk-user" class="auth-user muted" hidden></span>
+              <button id="clerk-sign-in" class="primary" type="button" disabled>Sign in</button>
+              <button id="recovery-toggle" type="button">Recovery token</button>
+              <div id="recovery-controls" class="recovery-controls" hidden>
+                <input id="token" type="password" placeholder="Operator recovery token" autocomplete="off" aria-describedby="auth-result">
+                <button id="save-token" class="primary">Unlock</button>
+              </div>
               <button id="lock-agent" type="button" hidden>Lock</button>
-              <span id="auth-result" class="auth-result" role="status" aria-live="polite">Locked</span>
+              <span id="auth-result" class="auth-result" role="status" aria-live="polite">Loading sign-in…</span>
             </div>
             <button id="refresh" title="Refresh health">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
@@ -584,14 +592,14 @@
             <div class="assistant-head">
               <div>
                 <strong>Operator console</strong>
-                <p>Token stays in this browser.</p>
+                <p>Email OTP sessions are short-lived. Recovery tokens stay in this browser.</p>
               </div>
               <span id="status-capability" class="pill warn">locked</span>
             </div>
             <div class="ask">
               <div>
                 <div class="ask-title">Need pool state?</div>
-                <p>Unlock and refresh to load live nodes, apps, system status, and actions.</p>
+                <p>Sign in with your invited email to load live nodes, apps, system status, and actions.</p>
               </div>
               <div class="mic" aria-hidden="true">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4.09 12.97a1 1 0 00.78 1.63H11l-2 7.4L19.91 11.03a1 1 0 00-.78-1.63H13l2-7.4z"/></svg>
@@ -928,6 +936,10 @@
     const tokenInput = document.getElementById("token");
     const saveToken = document.getElementById("save-token");
     const lockAgent = document.getElementById("lock-agent");
+    const clerkSignIn = document.getElementById("clerk-sign-in");
+    const clerkUser = document.getElementById("clerk-user");
+    const recoveryToggle = document.getElementById("recovery-toggle");
+    const recoveryControls = document.getElementById("recovery-controls");
     const authResult = document.getElementById("auth-result");
     const output = document.getElementById("output");
     const copyOutput = document.getElementById("copy-output");
@@ -992,6 +1004,8 @@
     let latencyHistory = [];
     let editingAppName = "";
     let tokenAppName = "";
+    let clerkReady = false;
+    let recoveryVisible = false;
 
     try {
       latencyHistory = JSON.parse(sessionStorage.getItem("poolctlLatencyHistory") || "[]");
@@ -1000,8 +1014,80 @@
       latencyHistory = [];
     }
 
-    function agentToken() {
+    function recoveryToken() {
       return localStorage.getItem("poolctlAgentToken") || "";
+    }
+
+    async function agentCredential() {
+      if (clerkReady && window.Clerk?.isSignedIn && window.Clerk.session) {
+        const sessionToken = await window.Clerk.session.getToken();
+        if (sessionToken) return sessionToken;
+      }
+      return recoveryToken();
+    }
+
+    function syncAuthControls() {
+      const signedIn = Boolean(clerkReady && window.Clerk?.isSignedIn);
+      const email = signedIn ? window.Clerk.user?.primaryEmailAddress?.emailAddress || "Signed in" : "";
+      clerkUser.textContent = email;
+      clerkUser.hidden = !signedIn;
+      clerkSignIn.hidden = signedIn || agentConnected;
+      clerkSignIn.disabled = !clerkReady;
+      recoveryToggle.hidden = agentConnected;
+      recoveryToggle.textContent = recoveryVisible ? "Hide recovery" : "Recovery token";
+      recoveryControls.hidden = agentConnected || !recoveryVisible;
+      lockAgent.hidden = !agentConnected;
+      lockAgent.textContent = signedIn ? "Sign out" : "Lock";
+    }
+
+    function loadClerkScript(src, attributes = {}) {
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = src;
+        script.async = true;
+        script.crossOrigin = "anonymous";
+        Object.entries(attributes).forEach(([name, value]) => script.setAttribute(name, value));
+        script.addEventListener("load", resolve, { once: true });
+        script.addEventListener("error", () => reject(new Error("Sign-in service failed to load")), { once: true });
+        document.head.appendChild(script);
+      });
+    }
+
+    async function initializeClerkAuth() {
+      try {
+        const response = await fetch("/api/auth-config", { cache: "no-store" });
+        const config = await response.json();
+        if (!response.ok || !config.publishableKey || !config.frontendAPI) {
+          throw new Error(config.error || "Sign-in is unavailable");
+        }
+        const base = `https://${config.frontendAPI}`;
+        await loadClerkScript(`${base}/npm/@clerk/ui@1/dist/ui.browser.js`);
+        await loadClerkScript(`${base}/npm/@clerk/clerk-js@6/dist/clerk.browser.js`, {
+          "data-clerk-publishable-key": config.publishableKey
+        });
+        await window.Clerk.load({
+          ui: { ClerkUI: window.__internal_ClerkUICtor },
+          appearance: {
+            variables: {
+              colorPrimary: "#e6654e",
+              borderRadius: "6px"
+            }
+          }
+        });
+        clerkReady = true;
+        window.Clerk.addListener(() => {
+          syncAuthControls();
+          refreshAgent({ silent: true });
+        });
+        syncAuthControls();
+        setAuthResult(window.Clerk.isSignedIn ? "Checking session…" : "Sign in required");
+      } catch (error) {
+        clerkReady = false;
+        recoveryVisible = true;
+        syncAuthControls();
+        setAuthResult("Recovery available", "bad");
+        output.textContent = `${error.message}. Use the operator recovery token while Clerk is unavailable.`;
+      }
     }
 
     function snapshotData(data) {
@@ -1044,7 +1130,8 @@
         },
         Capabilities: {
           managedAppLifecycleV2: Boolean(capabilities.managedAppLifecycleV2),
-          appDeployTokensV1: Boolean(capabilities.appDeployTokensV1)
+          appDeployTokensV1: Boolean(capabilities.appDeployTokensV1),
+          clerkOperatorAuthV1: Boolean(capabilities.clerkOperatorAuthV1)
         },
         Resources: resources.map((resource) => ({
           name: resource.name || "", status: resource.status || "",
@@ -1194,9 +1281,7 @@
       document.querySelectorAll("[data-action]").forEach((button) => {
         button.disabled = !unlocked || actionRunning || button.dataset.requiresDns === "true";
       });
-      tokenInput.hidden = unlocked;
-      saveToken.hidden = unlocked;
-      lockAgent.hidden = !unlocked;
+      syncAuthControls();
       addApp.disabled = !unlocked || actionRunning;
       agentState.textContent = unlocked ? "agent connected" : "agent locked";
       agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
@@ -1252,8 +1337,8 @@
     }
 
     async function agentFetch(path, options = {}, tokenOverride = "") {
-      const token = tokenOverride || agentToken();
-      if (!token) throw new Error("missing agent token");
+      const token = tokenOverride || await agentCredential();
+      if (!token) throw new Error("sign in or provide the recovery token");
       const res = await fetch(`${AGENT}${path}`, {
         ...options,
         headers: {
@@ -1413,9 +1498,10 @@
     }
 
     async function refreshAgent(options = {}) {
-      if (!agentToken()) { setUnlocked(false); return; }
+      const credential = await agentCredential();
+      if (!credential) { setUnlocked(false); return; }
       try {
-        const data = await agentFetch("/status");
+        const data = await agentFetch("/status", {}, credential);
         saveSnapshot(data);
         setUnlocked(true);
         setAuthResult("Connected", "ok");
@@ -1427,13 +1513,17 @@
         }
       } catch (error) {
         if (error.status === 401) {
-          localStorage.removeItem("poolctlAgentToken");
-          setAuthResult("Rejected", "bad");
+          if (!window.Clerk?.isSignedIn) localStorage.removeItem("poolctlAgentToken");
+          setAuthResult(window.Clerk?.isSignedIn ? "Activation pending" : "Rejected", "bad");
         } else {
           setAuthResult("Unavailable", "bad");
         }
         setUnlocked(false);
-        if (!options.silent) output.textContent = `Agent auth/status failed: ${error.message}`;
+        if (!options.silent) {
+          output.textContent = window.Clerk?.isSignedIn && error.status === 401
+            ? "Email sign-in succeeded. This Clerk account is awaiting one-time operator activation on Oracle; Recovery token remains available."
+            : `Agent auth/status failed: ${error.message}`;
+        }
       }
     }
 
@@ -1873,14 +1963,15 @@
       }
     }
 
-    function lockAgentSession() {
+    async function lockAgentSession() {
       closeDeployTokenDialog();
+      if (clerkReady && window.Clerk?.isSignedIn) await window.Clerk.signOut();
       localStorage.removeItem("poolctlAgentToken");
       tokenInput.value = "";
+      recoveryVisible = false;
       setUnlocked(false);
       setAuthResult("Locked");
-      output.textContent = "Agent locked. The saved token was removed from this browser.";
-      tokenInput.focus();
+      output.textContent = "Signed out. Any saved recovery token was removed from this browser.";
     }
 
     async function refreshAll() {
@@ -1896,6 +1987,15 @@
 
     saveToken.addEventListener("click", unlockAgent);
     lockAgent.addEventListener("click", lockAgentSession);
+    clerkSignIn.addEventListener("click", () => {
+      if (!clerkReady) return;
+      window.Clerk.openSignIn();
+    });
+    recoveryToggle.addEventListener("click", () => {
+      recoveryVisible = !recoveryVisible;
+      syncAuthControls();
+      if (recoveryVisible) tokenInput.focus();
+    });
     tokenInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") unlockAgent();
     });
@@ -1926,8 +2026,12 @@
     });
 
     bindActionButtons();
-    if (agentToken()) setAuthResult("Checking...");
-    refreshAll();
+    if (recoveryToken()) {
+      recoveryVisible = true;
+      setAuthResult("Checking recovery…");
+    }
+    syncAuthControls();
+    initializeClerkAuth().finally(refreshAll);
   </script>
 </body>
 </html>

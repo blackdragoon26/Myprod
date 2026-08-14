@@ -50,11 +50,11 @@ func TestRegisterAppEndpointPersistsWithoutDeploying(t *testing.T) {
 }
 
 func TestStatusResponseAdvertisesManagedAppLifecycleCapability(t *testing.T) {
-	raw, err := json.Marshal(response{OK: true, Capabilities: agentCapabilities{ManagedAppLifecycleV2: true, AppDeployTokensV1: true}})
+	raw, err := json.Marshal(response{OK: true, Capabilities: agentCapabilities{ManagedAppLifecycleV2: true, AppDeployTokensV1: true, ClerkOperatorAuthV1: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"managedAppLifecycleV2":true`) || !strings.Contains(string(raw), `"appDeployTokensV1":true`) {
+	if !strings.Contains(string(raw), `"managedAppLifecycleV2":true`) || !strings.Contains(string(raw), `"appDeployTokensV1":true`) || !strings.Contains(string(raw), `"clerkOperatorAuthV1":true`) {
 		t.Fatalf("status response = %s", raw)
 	}
 }

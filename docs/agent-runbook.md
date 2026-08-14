@@ -210,7 +210,9 @@ ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.5.201 \
    sudo systemctl is-active poolctl-agent'
 ```
 
-Unlock the production dashboard, refresh it, and confirm the new node appears.
+Sign in to the production dashboard, refresh it, and confirm the new node
+appears. Use **Recovery token** only for break-glass access or while Clerk is
+being rolled out.
 Do not copy the agent token or private SSH keys into the repository.
 
 ## 8. Register And Deploy An Application
@@ -229,7 +231,8 @@ Preflight requirements:
 
 From the hosted dashboard:
 
-1. Unlock with the Oracle agent token and refresh live state.
+1. Sign in with the invited Clerk email and refresh live state. If Clerk is
+   unavailable, use **Recovery token** with the Oracle agent token.
 2. Review **Resource Utilization**. CPU, memory, and root disk are actual host measurements from Nomad client stats.
 3. Select **Add application** under **Managed Apps**.
 4. Enter the app name, public image, domain, target node, container port, CPU reservation, memory reservation, and health path.

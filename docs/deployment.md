@@ -5,8 +5,10 @@
 Production URL:
 
 ```txt
-https://myprod-control.vercel.app
+https://control.sankalpjha.dev
 ```
+
+Vercel fallback URL: `https://myprod-control.vercel.app`.
 
 GitHub repo:
 
@@ -52,9 +54,16 @@ Use this when the Vercel dashboard can access the GitHub account:
 8. Confirm that pushes to `main` create production deployments.
 
 The dashboard is a static `public/index.html`, static assets under
-`public/assets/`, and the serverless smoke endpoint at `api/smoke.js`. Busy
+`public/assets/`, the public Clerk bootstrap endpoint at `api/auth-config.js`,
+and the serverless smoke endpoint at `api/smoke.js`. Busy
 buttons use `public/assets/waiting-cat.png`; include that asset when checking a
 deployment rather than validating only the HTML response.
+
+The Clerk Marketplace integration supplies `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
+and `CLERK_SECRET_KEY` to Vercel Production. Only the publishable key is exposed
+by `/api/auth-config`; the static dashboard and Oracle agent never receive the
+secret key. See [operator-authentication.md](operator-authentication.md) for the
+split rollout and recovery procedure.
 
 ## Oracle Agent Deployment
 
@@ -69,6 +78,9 @@ deployment order safe and does not resubmit or restart existing Nomad jobs.
 The **CI tokens** control is independently gated by `appDeployTokensV1`; it is
 hidden until the agent can mint, hash-store, list, and revoke scoped
 credentials. Neither capability causes a Nomad job submission during rollout.
+Clerk sessions are independently advertised by `clerkOperatorAuthV1`. The
+dashboard retains recovery-token access whether that capability is absent or
+present, so either deployment order remains safe.
 
 For an agent change:
 

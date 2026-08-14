@@ -28,12 +28,13 @@ const (
 )
 
 type server struct {
-	addr     string
-	store    pool.Store
-	token    string
-	runNomad func(context.Context, ...string) (string, error)
-	dns      dnsManager
-	deployMu sync.Mutex
+	addr         string
+	store        pool.Store
+	token        string
+	operatorAuth bearerAuthenticator
+	runNomad     func(context.Context, ...string) (string, error)
+	dns          dnsManager
+	deployMu     sync.Mutex
 }
 
 type nomadNode struct {
@@ -83,6 +84,7 @@ type response struct {
 type agentCapabilities struct {
 	ManagedAppLifecycleV2 bool `json:"managedAppLifecycleV2"`
 	AppDeployTokensV1     bool `json:"appDeployTokensV1"`
+	ClerkOperatorAuthV1   bool `json:"clerkOperatorAuthV1"`
 }
 
 type issuedDeployToken struct {
@@ -194,8 +196,12 @@ func Serve(args []string) error {
 	if err := store.InitializeDeployTokens(legacyTokens); err != nil {
 		return fmt.Errorf("initialize deploy token store: %w", err)
 	}
+	clerkAuth, err := newClerkSessionAuthenticatorFromEnv()
+	if err != nil {
+		return err
+	}
 	s := &server{
-		addr: addr, store: store, token: token,
+		addr: addr, store: store, token: token, operatorAuth: clerkAuth,
 		runNomad: runNomad, dns: newNetlifyDNSFromEnv(),
 	}
 
@@ -399,6 +405,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Capabilities: agentCapabilities{
 			ManagedAppLifecycleV2: true,
 			AppDeployTokensV1:     true,
+			ClerkOperatorAuthV1:   s.operatorAuth != nil,
 		},
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
@@ -1148,11 +1155,14 @@ func (s *server) authorized(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if s.token == "" || subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
-		return false
+	if s.token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+		return true
 	}
-	return true
+	if s.operatorAuth != nil && s.operatorAuth.Authorize(r.Context(), got) {
+		return true
+	}
+	writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
+	return false
 }
 
 func (s *server) authorizedAppDeploy(w http.ResponseWriter, r *http.Request, appName string) bool {
@@ -1162,6 +1172,9 @@ func (s *server) authorizedAppDeploy(w http.ResponseWriter, r *http.Request, app
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	if s.token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+		return true
+	}
+	if s.operatorAuth != nil && s.operatorAuth.Authorize(r.Context(), got) {
 		return true
 	}
 	authorized, err := s.store.AuthorizeDeployToken(appName, got)
@@ -1299,7 +1312,7 @@ func writeJSON(w http.ResponseWriter, status int, body response) {
 func withHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "https://myprod-control.vercel.app" || origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000" {
+		if origin == "https://control.sankalpjha.dev" || origin == "https://myprod-control.vercel.app" || origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
 		}

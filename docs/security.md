@@ -31,9 +31,21 @@ V1 assumes the operator already has SSH access to each VPS. `poolctl` should acc
 
 `poolctl web` is the SSH-capable local setup surface. It disables auth only for loopback development and requires `POOLCTL_WEB_PASSWORD` when bound to a non-loopback address. Its node scheduling actions execute against Oracle's real Nomad API through the configured operator SSH key.
 
-The hosted dashboard calls the Oracle-local agent and never receives SSH private keys or the Nomad ACL token. The agent bearer token is stored in the operator browser only after `/status` validates it. Invalid tokens are removed. Use **Lock** to remove a valid token from browser storage.
+The hosted dashboard calls the Oracle-local agent and never receives SSH
+private keys or the Nomad ACL token. Human operators normally authenticate with
+an invite-only Clerk email-OTP session. The browser sends Clerk's short-lived
+session JWT cross-origin, and the agent verifies its RSA signature, issuer,
+expiry, session ID, exact authorized party, and immutable user-ID allowlist.
+The Clerk secret key never reaches Oracle; public JWKS keys are sufficient.
+The agent bearer token remains a break-glass recovery credential stored in the
+operator browser only after `/status` validates it. Invalid recovery tokens are
+removed. Use **Sign out** or **Lock** to clear the active browser authorization.
+See [operator-authentication.md](operator-authentication.md).
 
-Powerful actions display specific confirmations describing scheduler or workload impact. Confirmations are an operator-safety mechanism, not an authorization boundary. The agent token, CORS allowlist, Nomad TLS, and Nomad ACLs enforce access.
+Powerful actions display specific confirmations describing scheduler or
+workload impact. Confirmations are an operator-safety mechanism, not an
+authorization boundary. Clerk JWT verification or the recovery agent token,
+the exact CORS allowlist, Nomad TLS, and Nomad ACLs enforce access.
 
 Project reservation validates a constrained project ID, refuses the control plane, refuses workers with active allocations, and disables Nomad eligibility before persisting ownership. Release leaves the node frozen so cleanup and scheduler re-entry remain separate decisions.
 
