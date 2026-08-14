@@ -1059,6 +1059,8 @@
     let editingAppName = "";
     let tokenAppName = "";
     let clerkReady = false;
+    let clerkEmailCodeFlow = "";
+    let clerkEmailFactorID = "";
     let recoveryVisible = false;
 
     try {
@@ -1108,7 +1110,8 @@
     }
 
     function clerkErrorMessage(error) {
-      return error?.longMessage || error?.message || "Clerk could not complete that request.";
+      const clerkError = error?.errors?.[0];
+      return clerkError?.longMessage || clerkError?.message || error?.longMessage || error?.message || "Clerk could not complete that request.";
     }
 
     function showEmailStep() {
@@ -1129,20 +1132,20 @@
       authCode.focus();
     }
 
-    async function resetClerkSignIn() {
-      const signIn = window.Clerk?.client?.signIn;
-      if (signIn?.reset) await signIn.reset();
+    function resetClerkSignIn() {
+      clerkEmailCodeFlow = "";
+      clerkEmailFactorID = "";
     }
 
     async function openAuthDialog() {
       if (!clerkReady) return;
-      await resetClerkSignIn();
+      resetClerkSignIn();
       authDialog.showModal();
       showEmailStep();
     }
 
     async function closeAuthDialog() {
-      await resetClerkSignIn();
+      resetClerkSignIn();
       authDialog.close();
     }
 
@@ -1155,11 +1158,26 @@
       authError.textContent = "";
       try {
         const signIn = window.Clerk.client.signIn;
-        await signIn.reset();
-        const created = await signIn.create({ identifier: emailAddress, signUpIfMissing: true });
-        if (created.error) throw created.error;
-        const sent = await signIn.emailCode.sendCode();
-        if (sent.error) throw sent.error;
+        resetClerkSignIn();
+        if (typeof signIn.emailCode?.sendCode === "function") {
+          const created = await signIn.create({ identifier: emailAddress, signUpIfMissing: true });
+          if (created?.error) throw created.error;
+          const sent = await signIn.emailCode.sendCode();
+          if (sent?.error) throw sent.error;
+          clerkEmailCodeFlow = "future";
+        } else {
+          const created = await signIn.create({ identifier: emailAddress });
+          const emailFactor = created.supportedFirstFactors?.find((factor) => factor.strategy === "email_code");
+          if (!emailFactor?.emailAddressId) {
+            throw new Error("Email code sign-in is not available for this account. Accept the operator invitation first, then try again.");
+          }
+          await created.prepareFirstFactor({
+            strategy: "email_code",
+            emailAddressId: emailFactor.emailAddressId
+          });
+          clerkEmailCodeFlow = "legacy";
+          clerkEmailFactorID = emailFactor.emailAddressId;
+        }
         showCodeStep();
       } catch (error) {
         authError.textContent = clerkErrorMessage(error);
@@ -1178,15 +1196,26 @@
       authError.textContent = "";
       try {
         const signIn = window.Clerk.client.signIn;
-        const verified = await signIn.emailCode.verifyCode({ code });
-        if (verified.error) throw verified.error;
-        if (signIn.status !== "complete") throw new Error("Additional account verification is required.");
-        await signIn.finalize({
-          navigate: async ({ session, decorateUrl }) => {
-            if (session?.currentTask) throw new Error("Complete the pending Clerk account task before opening Myprod.");
-            window.location.assign(decorateUrl("/"));
+        if (clerkEmailCodeFlow === "future") {
+          const verified = await signIn.emailCode.verifyCode({ code });
+          if (verified?.error) throw verified.error;
+          if (signIn.status !== "complete") throw new Error("Additional account verification is required.");
+          await signIn.finalize({
+            navigate: async ({ session, decorateUrl }) => {
+              if (session?.currentTask) throw new Error("Complete the pending Clerk account task before opening Myprod.");
+              window.location.assign(decorateUrl("/"));
+            }
+          });
+        } else if (clerkEmailCodeFlow === "legacy") {
+          const verified = await signIn.attemptFirstFactor({ strategy: "email_code", code });
+          if (verified.status !== "complete" || !verified.createdSessionId) {
+            throw new Error("Additional account verification is required.");
           }
-        });
+          await window.Clerk.setActive({ session: verified.createdSessionId });
+          window.location.assign("/");
+        } else {
+          throw new Error("Request a new email code and try again.");
+        }
       } catch (error) {
         authError.textContent = clerkErrorMessage(error);
         authCode.focus();
@@ -1201,8 +1230,18 @@
       authResend.disabled = true;
       authError.textContent = "";
       try {
-        const sent = await window.Clerk.client.signIn.emailCode.sendCode();
-        if (sent.error) throw sent.error;
+        const signIn = window.Clerk.client.signIn;
+        if (clerkEmailCodeFlow === "future") {
+          const sent = await signIn.emailCode.sendCode();
+          if (sent?.error) throw sent.error;
+        } else if (clerkEmailCodeFlow === "legacy" && clerkEmailFactorID) {
+          await signIn.prepareFirstFactor({
+            strategy: "email_code",
+            emailAddressId: clerkEmailFactorID
+          });
+        } else {
+          throw new Error("Request a new email code and try again.");
+        }
         authError.textContent = "A new code was sent.";
         authError.style.color = "var(--ok)";
         setTimeout(() => { authError.style.color = ""; }, 1500);
@@ -2143,7 +2182,7 @@
     authDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeAuthDialog(); });
     authEmailForm.addEventListener("submit", sendEmailCode);
     authCodeForm.addEventListener("submit", verifyEmailCode);
-    authChangeEmail.addEventListener("click", async () => { await resetClerkSignIn(); showEmailStep(); });
+    authChangeEmail.addEventListener("click", () => { resetClerkSignIn(); showEmailStep(); });
     authResend.addEventListener("click", resendEmailCode);
     recoveryToggle.addEventListener("click", () => {
       recoveryVisible = !recoveryVisible;
