@@ -4,6 +4,12 @@ This repository operates real Oracle and worker VPS infrastructure. Read
 `docs/agent-runbook.md` before creating, joining, resizing, draining, or
 destroying a node.
 
+Before changing the hosted dashboard, operator authentication, managed apps,
+CI deploy tokens, Oracle agent binary, or Oracle agent environment, read
+`docs/llm-operator-guide.md` and the specific document it routes to. The
+canonical dashboard is `https://control.sankalpjha.dev/`; the Vercel URL is a
+fallback alias.
+
 ## Required Safety
 
 - Never commit agent tokens, cloud credentials, passwords, private SSH keys, or

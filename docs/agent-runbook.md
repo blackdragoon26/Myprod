@@ -6,9 +6,12 @@ the Myprod compute pool.
 ## Architecture Boundary
 
 The production dashboard at
-[`myprod-control.vercel.app`](https://myprod-control.vercel.app/) monitors the
+[`control.sankalpjha.dev`](https://control.sankalpjha.dev/) monitors the
 pool and controls already registered nodes through the Oracle-local agent. It
 does not create cloud resources or perform the first SSH join.
+
+`https://myprod-control.vercel.app/` is the fallback Vercel alias. Use the
+custom production domain for ordinary operation and authentication.
 
 New VPS registration and joining currently run from an SSH-capable checkout of
 this repository using the local `poolctl web` operator surface. This is
@@ -18,7 +21,8 @@ to Vercel.
 ## Sources Of Truth
 
 - Repository: <https://github.com/blackdragoon26/Myprod>
-- Production dashboard: <https://myprod-control.vercel.app/>
+- Production dashboard: <https://control.sankalpjha.dev/>
+- Vercel fallback: <https://myprod-control.vercel.app/>
 - Oracle control plane: `ubuntu@140.245.5.201`, overlay `10.44.0.1`
 - Worker guide: [`digitalocean-worker.md`](digitalocean-worker.md)
 - Local state: `.poolctl/config.yaml` and `.poolctl/state.yaml` (not committed)
@@ -176,7 +180,7 @@ Public checks:
 
 ```sh
 curl -fsS https://api.sankalpjha.dev/
-curl -fsS https://myprod-control.vercel.app/api/smoke
+curl -fsS https://control.sankalpjha.dev/api/smoke
 curl -fsS https://api.sankalpjha.dev/__poolctl/api/health
 ```
 

@@ -12,9 +12,11 @@ The first target is personal projects, not enterprise high availability.
 
 ## Project Links
 
-- Dashboard: <https://myprod-control.vercel.app/>
+- Production dashboard: <https://control.sankalpjha.dev/>
+- Vercel fallback: <https://myprod-control.vercel.app/>
 - Repository: <https://github.com/blackdragoon26/Myprod>
 - Agent provisioning runbook: [docs/agent-runbook.md](docs/agent-runbook.md)
+- LLM operator guide: [docs/llm-operator-guide.md](docs/llm-operator-guide.md)
 - Creator: [Sankalp Jha](https://sankalpjha.dev/)
 
 ## Goals
@@ -98,15 +100,19 @@ For local use, auth is disabled when bound to loopback. If binding to a public i
 POOLCTL_WEB_PASSWORD='change-me' ./work/poolctl web --addr 0.0.0.0:8088
 ```
 
-Do not expose the dashboard on `admin.sankalpjha.dev` until the backend is running in a deployment-safe mode. The current dashboard controls Oracle through the existing SSH-based CLI flow, which is perfect from this repo on your Mac; the hosted version should use Oracle-local Nomad/systemd operations instead of copying a private SSH key to the server.
-
-There is also a Vercel-hosted control dashboard at:
+The production control dashboard is:
 
 ```txt
-https://myprod-control.vercel.app/
+https://control.sankalpjha.dev/
 ```
 
-It shows the Oracle pool shape, runs live HTTP/HTTPS smoke checks through `/api/smoke`, and can call the Oracle-local `poolctl agent` through `https://api.sankalpjha.dev/__poolctl` after unlocking with the agent token. The dashboard includes links to the repo, docs, and creator site.
+`https://myprod-control.vercel.app/` remains a fallback Vercel alias, not the
+canonical operator URL. The hosted dashboard shows the Oracle pool shape, runs
+live HTTP/HTTPS smoke checks through `/api/smoke`, and calls the Oracle-local
+`poolctl agent` through `https://api.sankalpjha.dev/__poolctl`. Human operators
+normally authenticate with an invite-only Clerk email OTP. **Recovery token**
+is the break-glass path for Clerk outages or rollout recovery, not the normal
+sign-in method. Private SSH keys never enter Vercel or the dashboard.
 
 The hosted dashboard can register a public container image as a managed app. Registration validates and persists the app name, image, domain, target node, container port, health path, CPU reservation, memory reservation, and DNS ownership mode in Oracle's agent store. When managed DNS is selected, the Oracle agent idempotently creates or verifies the Netlify A record and records propagation state. It never overwrites conflicting A, AAAA, or CNAME records. Registration does not deploy implicitly; **Deploy** remains a separately confirmed action and is blocked until managed DNS is ready.
 
@@ -143,6 +149,10 @@ Deployment notes live in [docs/deployment.md](docs/deployment.md). Production sh
 Operator concepts and application handoffs are documented in
 [docs/operator-faq.md](docs/operator-faq.md) and
 [docs/application-onboarding.md](docs/application-onboarding.md).
+Authentication and safe agent activation are documented in
+[docs/operator-authentication.md](docs/operator-authentication.md). Agents and
+other LLMs must begin with [docs/llm-operator-guide.md](docs/llm-operator-guide.md)
+before changing production state.
 Netlify credential setup and DNS lifecycle behavior are documented in
 [docs/netlify-dns.md](docs/netlify-dns.md).
 
