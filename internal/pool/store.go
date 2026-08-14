@@ -9,14 +9,16 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 type Store struct {
-	dir string
+	dir     string
+	tokenMu *sync.Mutex
 }
 
 func NewStore(dir string) Store {
-	return Store{dir: dir}
+	return Store{dir: dir, tokenMu: &sync.Mutex{}}
 }
 
 func (s Store) Init() (bool, error) {
@@ -217,7 +219,10 @@ func (s Store) DeleteApp(name string) error {
 	if err := os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o600); err != nil {
 		return err
 	}
-	return s.SaveState(state)
+	if err := s.SaveState(state); err != nil {
+		return err
+	}
+	return s.RemoveDeployTokens(name)
 }
 
 func (s Store) SetNodeJoined(name string, joined bool) error {

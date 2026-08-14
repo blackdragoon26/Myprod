@@ -275,16 +275,27 @@ allocation on the configured node, and only then persists the new digest. A
 failed deployment leaves the stored image unchanged. Failure output includes
 `nomad eval status` and available `nomad alloc status` evidence.
 
-For repository CI, add an app-scoped credential to Oracle's root-readable
-agent environment and restart only `poolctl-agent`:
+For repository CI, open the app's **CI tokens** control in the hosted dashboard,
+enter a label such as `GitHub Actions`, and select **Generate deploy token**.
+Copy the plaintext immediately into the repository's masked Actions secret; it
+is returned once and cannot be recovered. Myprod stores only its SHA-256 digest
+in `/opt/poolctl/.poolctl/deploy-tokens.json`, with mode `0600`. The token
+authorizes only the matching app path, and the stored image repository is its
+automatic allowlist. Do not give a source repository the dashboard-wide
+operator token.
 
-```txt
-POOLCTL_APP_DEPLOY_TOKENS_JSON={"app-name":"<random token of at least 32 characters>"}
-```
+The same control lists creation and last-used times and supports immediate
+revocation without restarting the agent. Multiple tokens may coexist during a
+safe CI rotation. Token plaintext must never be pasted into Agent Output,
+application fields, issues, or Git.
 
-The JSON object can contain multiple apps. A scoped token authorizes only the
-matching path, and the stored image repository is its automatic allowlist. Do
-not give a source repository the dashboard-wide operator token.
+On the first agent version supporting `appDeployTokensV1`, existing
+`POOLCTL_APP_DEPLOY_TOKENS_JSON`, `POOLCTL_P4LENS_DEPLOY_TOKEN`, and
+`POOLCTL_CUTABLE_DEPLOY_TOKEN` values are hash-imported exactly once. Existing
+CI therefore continues to work. After minting and testing replacement tokens,
+revoke the imported credentials, remove the deprecated environment variables,
+and perform one final controlled `poolctl-agent` restart. Revoked legacy values
+are not re-imported.
 
 The older P4Lens repository integration remains available for compatibility:
 
@@ -295,9 +306,9 @@ Authorization: Bearer <POOLCTL_P4LENS_DEPLOY_TOKEN>
 ```
 
 That compatibility endpoint cannot deploy another application, tag, registry,
-or mutable image reference. Store its scoped token only in
-`/etc/poolctl-agent.env` and the source repository's Actions secret named
-`MYPROD_P4LENS_DEPLOY_TOKEN`; never reuse the dashboard operator token.
+or mutable image reference. New P4Lens CI should use a dashboard-issued token.
+The environment credential remains only as a hash-imported migration path;
+never reuse the dashboard operator token.
 
 Cutable uses the same verified deployment path with an independent token and
 an independently constrained application/image pair:
@@ -308,10 +319,10 @@ Authorization: Bearer <POOLCTL_CUTABLE_DEPLOY_TOKEN>
 {"image":"ghcr.io/blackdragoon26/cutable-api@sha256:<64 lowercase hex>"}
 ```
 
-Store this token only in `/etc/poolctl-agent.env` and Cutable's Actions secret
-named `MYPROD_CUTABLE_DEPLOY_TOKEN`. A successful request updates the stored
-digest only after the `cutable-api` allocation is healthy, so subsequent
-dashboard actions and automatic deployments use the same verified artifact.
+New Cutable CI should use a dashboard-issued token. A successful request
+updates the stored digest only after the `cutable-api` allocation is healthy,
+so subsequent dashboard actions and automatic deployments use the same
+verified artifact.
 
 Internal GHCR images also require a read-only registry credential configured
 on every eligible target node through Nomad's Docker driver. Do not put that

@@ -50,11 +50,11 @@ func TestRegisterAppEndpointPersistsWithoutDeploying(t *testing.T) {
 }
 
 func TestStatusResponseAdvertisesManagedAppLifecycleCapability(t *testing.T) {
-	raw, err := json.Marshal(response{OK: true, Capabilities: agentCapabilities{ManagedAppLifecycleV2: true}})
+	raw, err := json.Marshal(response{OK: true, Capabilities: agentCapabilities{ManagedAppLifecycleV2: true, AppDeployTokensV1: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"capabilities":{"managedAppLifecycleV2":true}`) {
+	if !strings.Contains(string(raw), `"managedAppLifecycleV2":true`) || !strings.Contains(string(raw), `"appDeployTokensV1":true`) {
 		t.Fatalf("status response = %s", raw)
 	}
 }
@@ -80,10 +80,14 @@ func TestP4LensDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 		}
 		return "Job registration successful\nEvaluation ID: eval-new\n", nil
 	}
-	s := &server{store: store, deployToken: "deploy-token", runNomad: runner}
+	deployToken := strings.Repeat("p", 32)
+	if err := store.InitializeDeployTokens([]pool.LegacyDeployToken{{App: p4LensAppName, Token: deployToken}}); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{store: store, runNomad: runner}
 	image := p4LensImagePrefix + strings.Repeat("b", 64)
 	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/deploy/p4lens", strings.NewReader(`{"image":"`+image+`"}`))
-	req.Header.Set("Authorization", "Bearer deploy-token")
+	req.Header.Set("Authorization", "Bearer "+deployToken)
 	recorder := httptest.NewRecorder()
 	s.handleP4LensDeploy(recorder, req)
 	if recorder.Code != http.StatusOK {
@@ -120,10 +124,14 @@ func TestCutableDeployEndpointIsScopedAndPersistsVerifiedDigest(t *testing.T) {
 		}
 		return "Job registration successful\nEvaluation ID: eval-cutable\n", nil
 	}
-	s := &server{store: store, cutableDeployToken: "cutable-deploy-token", runNomad: runner}
+	deployToken := strings.Repeat("c", 32)
+	if err := store.InitializeDeployTokens([]pool.LegacyDeployToken{{App: cutableAppName, Token: deployToken}}); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{store: store, runNomad: runner}
 	image := cutableImagePrefix + strings.Repeat("b", 64)
 	req := httptest.NewRequest(http.MethodPost, "/__poolctl/api/deploy/cutable", strings.NewReader(`{"image":"`+image+`"}`))
-	req.Header.Set("Authorization", "Bearer cutable-deploy-token")
+	req.Header.Set("Authorization", "Bearer "+deployToken)
 	recorder := httptest.NewRecorder()
 	s.handleCutableDeploy(recorder, req)
 	if recorder.Code != http.StatusOK {
@@ -178,7 +186,11 @@ func TestGenericImageEndpointUpdatesAnyRegisteredAppAfterHealthyDeploy(t *testin
 
 func TestGenericImageEndpointAcceptsOnlyMatchingScopedDeployToken(t *testing.T) {
 	token := strings.Repeat("t", 32)
-	s := &server{store: testStore(t), token: "operator-token", appDeployTokens: map[string]string{"sample-api": token}}
+	store := testStore(t)
+	if err := store.InitializeDeployTokens([]pool.LegacyDeployToken{{App: "sample-api", Token: token}}); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{store: store, token: "operator-token"}
 	for _, test := range []struct {
 		path string
 		want int
@@ -196,6 +208,69 @@ func TestGenericImageEndpointAcceptsOnlyMatchingScopedDeployToken(t *testing.T) 
 	}
 	if _, err := parseAppDeployTokens(`{"sample-api":"short"}`); err == nil {
 		t.Fatal("short scoped deploy token was accepted")
+	}
+}
+
+func TestDeployTokenLifecycleEndpointMintsOnceListsMetadataAndRevokes(t *testing.T) {
+	store := testStore(t)
+	if err := store.InitializeDeployTokens(nil); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{store: store, token: "operator-token"}
+
+	mint := httptest.NewRequest(http.MethodPost, "/__poolctl/api/apps/sample-api/deploy-tokens", strings.NewReader(`{"label":"GitHub Actions"}`))
+	mint.Header.Set("Authorization", "Bearer operator-token")
+	mintRecorder := httptest.NewRecorder()
+	s.handleApp(mintRecorder, mint)
+	if mintRecorder.Code != http.StatusCreated {
+		t.Fatalf("mint status=%d body=%s", mintRecorder.Code, mintRecorder.Body.String())
+	}
+	var minted response
+	if err := json.Unmarshal(mintRecorder.Body.Bytes(), &minted); err != nil {
+		t.Fatal(err)
+	}
+	if minted.IssuedToken == nil || !strings.HasPrefix(minted.IssuedToken.Token, "poolctl_v1.") {
+		t.Fatalf("minted response = %#v", minted.IssuedToken)
+	}
+	plaintext := minted.IssuedToken.Token
+	id := minted.IssuedToken.ID
+
+	list := httptest.NewRequest(http.MethodGet, "/__poolctl/api/apps/sample-api/deploy-tokens", nil)
+	list.Header.Set("Authorization", "Bearer operator-token")
+	listRecorder := httptest.NewRecorder()
+	s.handleApp(listRecorder, list)
+	if listRecorder.Code != http.StatusOK || strings.Contains(listRecorder.Body.String(), plaintext) || strings.Contains(listRecorder.Body.String(), "digest") {
+		t.Fatalf("list status=%d body=%s", listRecorder.Code, listRecorder.Body.String())
+	}
+
+	revoke := httptest.NewRequest(http.MethodDelete, "/__poolctl/api/apps/sample-api/deploy-tokens/"+id, nil)
+	revoke.Header.Set("Authorization", "Bearer operator-token")
+	revokeRecorder := httptest.NewRecorder()
+	s.handleApp(revokeRecorder, revoke)
+	if revokeRecorder.Code != http.StatusOK {
+		t.Fatalf("revoke status=%d body=%s", revokeRecorder.Code, revokeRecorder.Body.String())
+	}
+	if ok, err := store.AuthorizeDeployToken("sample-api", plaintext); err != nil || ok {
+		t.Fatalf("revoked token authorized=%t err=%v", ok, err)
+	}
+}
+
+func TestScopedDeployTokenCannotManageTokens(t *testing.T) {
+	store := testStore(t)
+	if err := store.InitializeDeployTokens(nil); err != nil {
+		t.Fatal(err)
+	}
+	plaintext, _, err := store.MintDeployToken("sample-api", "CI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &server{store: store, token: "operator-token"}
+	req := httptest.NewRequest(http.MethodGet, "/__poolctl/api/apps/sample-api/deploy-tokens", nil)
+	req.Header.Set("Authorization", "Bearer "+plaintext)
+	recorder := httptest.NewRecorder()
+	s.handleApp(recorder, req)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -336,7 +411,7 @@ func TestP4LensDeploysAreSerializedWithUniqueRenderedImages(t *testing.T) {
 }
 
 func TestP4LensDeployEndpointRejectsOtherImagesAndTokens(t *testing.T) {
-	s := &server{deployToken: "deploy-token"}
+	s := &server{store: testStore(t), token: "deploy-token"}
 	for _, test := range []struct {
 		token string
 		image string
@@ -357,7 +432,7 @@ func TestP4LensDeployEndpointRejectsOtherImagesAndTokens(t *testing.T) {
 }
 
 func TestCutableDeployEndpointRejectsOtherImagesAndTokens(t *testing.T) {
-	s := &server{cutableDeployToken: "cutable-deploy-token"}
+	s := &server{store: testStore(t), token: "cutable-deploy-token"}
 	for _, test := range []struct {
 		token string
 		image string
@@ -737,7 +812,7 @@ func TestCORSAllowsDashboardAppEdits(t *testing.T) {
 	if got := recorder.Header().Get("Access-Control-Allow-Origin"); got != "https://myprod-control.vercel.app" {
 		t.Fatalf("allow origin = %q", got)
 	}
-	if got := recorder.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPut) {
+	if got := recorder.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, http.MethodPut) || !strings.Contains(got, http.MethodDelete) {
 		t.Fatalf("allow methods = %q", got)
 	}
 }

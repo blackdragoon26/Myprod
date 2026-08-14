@@ -56,7 +56,27 @@ The dashboard and agent store persist only the boolean mount policy, never the
 file contents or an arbitrary host path. Private registry credentials still
 require separate node-level configuration.
 
-Repository-triggered image deployments use app-scoped tokens configured only in Oracle's root-readable agent environment. Each token is bound to one app path, and image updates are restricted to an immutable SHA-256 digest in that app's already registered repository. The full operator token must not be copied into project CI.
+Repository-triggered image deployments use app-scoped credentials minted by
+the authenticated Oracle agent. A token contains 256 bits of randomness, is
+returned to the browser once with `Cache-Control: no-store`, and is persisted
+only as a SHA-256 digest in the root-readable agent store. SHA-256 is suitable
+here because these are uniformly random high-entropy tokens, not human
+passwords. Metadata responses expose only token ID, label, creation time,
+last-used time, and legacy-import status.
+
+Mint, list, and revoke operations require the full operator token; an
+app-scoped token cannot issue credentials. Each token is bound to one app path,
+and image updates remain restricted to an immutable SHA-256 digest in that
+app's already registered repository. Revocation is live and does not restart
+the agent. Deleting an app removes its deploy tokens. The full operator token
+must never be copied into project CI.
+
+Legacy plaintext environment tokens are hash-imported exactly once for a
+backward-compatible rollout. The token store records that import, so a revoked
+legacy token cannot reappear merely because its deprecated environment value
+has not yet been removed. Application-consumed secrets remain outside this
+credential-issuance surface and continue to require direct operator
+installation on the target node.
 
 The hosted dashboard may retain a sanitized last-successful status snapshot in
 browser local storage for locked, read-only visibility. The snapshot is limited

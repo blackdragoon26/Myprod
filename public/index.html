@@ -249,6 +249,19 @@
     .form-error { min-height: 18px; margin-top: 8px; color: var(--bad); font-size: 12px; }
     .form-actions { position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; padding-top: 12px; background: var(--surface); }
 
+    .token-dialog { width: min(680px, calc(100vw - 32px)); }
+    .token-shell { padding: 20px; }
+    .token-list { display: grid; gap: 8px; margin: 16px 0; }
+    .token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
+    .token-row strong { display: block; }
+    .token-meta { margin-top: 4px; color: var(--text-muted); font-size: 12px; }
+    .token-mint { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; margin-top: 16px; }
+    .token-issued { margin-top: 16px; padding: 14px; border: 1px solid var(--warn-border); border-radius: var(--radius-sm); background: var(--warn-bg); }
+    .token-issued p { color: var(--warn); font-size: 12px; font-weight: 600; }
+    .token-secret-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 10px; }
+    .token-secret-row input { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .token-message { min-height: 18px; margin-top: 10px; color: var(--text-muted); font-size: 12px; }
+
     .faq-dialog { width: min(760px, calc(100vw - 32px)); }
     .faq-shell { padding: 20px; }
     .faq-head { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
@@ -494,6 +507,7 @@
       .auth-controls input { width: 100%; }
       .auth-result { grid-column: 1 / -1; }
       .summary-row, .status-grid, .resource-grid, .form-grid { grid-template-columns: 1fr; }
+	  .token-mint, .token-secret-row { grid-template-columns: 1fr; }
       .field.wide { grid-column: auto; }
       .card, .hero-main, .assistant-panel { padding: 14px; }
       .node-card { grid-template-columns: 1fr; }
@@ -783,6 +797,36 @@
     </form>
   </dialog>
 
+  <dialog id="token-dialog" class="token-dialog" aria-labelledby="token-dialog-title">
+    <div class="token-shell">
+      <div class="app-form-head">
+        <div>
+          <h2 id="token-dialog-title">CI deploy tokens</h2>
+          <p>Myprod-issued credentials can update only this application's existing image repository.</p>
+        </div>
+        <button id="token-close" class="icon" type="button" aria-label="Close deploy tokens" title="Close">&times;</button>
+      </div>
+      <div class="form-note">Application runtime secrets remain SSH-installed and are never accepted here. Deploy-token plaintext is shown once and is not saved by the dashboard.</div>
+      <div id="token-list" class="token-list"><div class="empty">Loading deploy tokens...</div></div>
+      <div class="token-mint">
+        <div class="field">
+          <label for="token-label">Token label</label>
+          <input id="token-label" maxlength="80" value="GitHub Actions" autocomplete="off">
+        </div>
+        <button id="token-mint" class="primary" type="button">Generate deploy token</button>
+      </div>
+      <div id="token-issued" class="token-issued" hidden>
+        <p>Copy this token now. Myprod cannot show it again after this dialog is closed.</p>
+        <div class="token-secret-row">
+          <input id="token-secret" type="text" readonly autocomplete="off" aria-label="New deploy token">
+          <button id="token-copy" type="button">Copy token</button>
+        </div>
+      </div>
+      <div id="token-message" class="token-message" role="status"></div>
+      <div class="form-actions"><button id="token-done" type="button">Done</button></div>
+    </div>
+  </dialog>
+
   <dialog id="faq-dialog" class="faq-dialog" aria-labelledby="faq-title">
     <div class="faq-shell">
       <div class="faq-head">
@@ -828,6 +872,10 @@
         <details>
           <summary>What remains visible while the dashboard is locked?</summary>
           <div class="faq-answer"><p>The browser keeps the last successful pool status snapshot and its capture time. Locked views are explicitly labeled cached and all mutation controls remain disabled. The public ingress smoke checks can still refresh without an agent token. Cached state can be stale and must never be treated as proof of current scheduler state.</p></div>
+        </details>
+        <details>
+          <summary>How are CI deploy tokens different from application secrets?</summary>
+          <div class="faq-answer"><p>Myprod generates app-scoped CI tokens, displays each plaintext once, and persists only its digest. Use the app's <strong>CI tokens</strong> control to create, inspect last-used metadata, rotate, or revoke one without restarting the agent. Application-consumed secrets remain SSH-installed on the exact target node and must never be entered into the token dialog or app form.</p></div>
         </details>
         <details>
           <summary>What is intentionally unsupported?</summary>
@@ -898,6 +946,17 @@
     const appEnvField = document.getElementById("app-env-field");
     const appFormNote = document.getElementById("app-form-note");
     const appError = document.getElementById("app-error");
+    const tokenDialog = document.getElementById("token-dialog");
+    const tokenDialogTitle = document.getElementById("token-dialog-title");
+    const tokenClose = document.getElementById("token-close");
+    const tokenDone = document.getElementById("token-done");
+    const tokenList = document.getElementById("token-list");
+    const tokenLabel = document.getElementById("token-label");
+    const tokenMint = document.getElementById("token-mint");
+    const tokenIssued = document.getElementById("token-issued");
+    const tokenSecret = document.getElementById("token-secret");
+    const tokenCopy = document.getElementById("token-copy");
+    const tokenMessage = document.getElementById("token-message");
     const reservationsBody = document.getElementById("reservations-body");
     const resourceGrid = document.getElementById("resource-grid");
     const resourceMode = document.getElementById("resource-mode");
@@ -932,6 +991,7 @@
     let latestCapabilities = {};
     let latencyHistory = [];
     let editingAppName = "";
+    let tokenAppName = "";
 
     try {
       latencyHistory = JSON.parse(sessionStorage.getItem("poolctlLatencyHistory") || "[]");
@@ -983,7 +1043,8 @@
           targetIPv4: dns.targetIPv4 || "", configured: Boolean(dns.configured)
         },
         Capabilities: {
-          managedAppLifecycleV2: Boolean(capabilities.managedAppLifecycleV2)
+          managedAppLifecycleV2: Boolean(capabilities.managedAppLifecycleV2),
+          appDeployTokensV1: Boolean(capabilities.appDeployTokensV1)
         },
         Resources: resources.map((resource) => ({
           name: resource.name || "", status: resource.status || "",
@@ -1254,6 +1315,7 @@
       latestDNS = data.DNS || data.dns || {};
       latestCapabilities = data.Capabilities || data.capabilities || {};
       const managedAppLifecycleV2 = Boolean(latestCapabilities.managedAppLifecycleV2);
+      const appDeployTokensV1 = Boolean(latestCapabilities.appDeployTokensV1);
       nomadState.innerHTML = statePill(system.nomad || system.Nomad);
       traefikState.innerHTML = statePill(system.traefik || system.Traefik);
       wireguardState.innerHTML = statePill(system.wireguard || system.WireGuard);
@@ -1278,6 +1340,7 @@
             ${app.ManageDNS && !dnsReady ? `<button data-action="app-dns-sync" data-name="${escapeHTML(app.Name)}">Check DNS</button>` : ""}
             ${managedAppLifecycleV2 ? `<button data-edit-app="${escapeHTML(app.Name)}">Edit</button>` : ""}
             ${managedAppLifecycleV2 ? `<button data-image-update="${escapeHTML(app.Name)}">Update image</button>` : ""}
+            ${appDeployTokensV1 ? `<button data-deploy-tokens="${escapeHTML(app.Name)}">CI tokens</button>` : ""}
             <button data-action="app-deploy" data-name="${escapeHTML(app.Name)}" data-requires-dns="${dnsReady ? "false" : "true"}" ${dnsReady ? "" : "disabled"}>Deploy</button>
             ${managedAppLifecycleV2 ? `<button class="danger" data-action="app-delete" data-name="${escapeHTML(app.Name)}">Delete</button>` : ""}
           </div></td>
@@ -1384,7 +1447,7 @@
     function setActionBusy(active, button) {
       actionRunning = active;
       output.setAttribute("aria-busy", String(active));
-      document.querySelectorAll("[data-action], [data-edit-app], [data-image-update]").forEach((candidate) => {
+      document.querySelectorAll("[data-action], [data-edit-app], [data-image-update], [data-deploy-tokens], [data-token-revoke]").forEach((candidate) => {
         candidate.disabled = active || !agentConnected || candidate.dataset.requiresDns === "true";
         if (!active) setButtonLoading(candidate, false);
       });
@@ -1411,6 +1474,12 @@
           body: "If deployed, Myprod will stop and purge the Nomad job before removing its saved configuration and state.",
           warning: "Are you sure? Public traffic will stop. Managed DNS is deliberately preserved for separate operator review.",
           label: "Delete"
+        },
+        "deploy-token-revoke": {
+          title: `Revoke ${name}?`,
+          body: "The corresponding CI credential will stop authorizing deployments immediately.",
+          warning: "Are you sure? Update or disable the repository workflow first if it still uses this token.",
+          label: "Revoke token"
         },
         "node-freeze": {
           title: `Freeze ${name}?`,
@@ -1508,6 +1577,115 @@
       }
     }
 
+    function formatTokenTime(value) {
+      if (!value) return "never";
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return "unknown";
+      return parsed.toLocaleString();
+    }
+
+    function closeDeployTokenDialog() {
+      tokenSecret.value = "";
+      tokenIssued.hidden = true;
+      tokenMessage.textContent = "";
+      tokenAppName = "";
+      if (tokenDialog.open) tokenDialog.close();
+    }
+
+    function renderDeployTokens(tokens) {
+      tokenList.innerHTML = tokens.map((token) => `<div class="token-row">
+        <div>
+          <strong>${escapeHTML(token.label || "CI deploy token")}</strong>
+          <div class="token-meta">Created ${escapeHTML(formatTokenTime(token.createdAt))} · Last used ${escapeHTML(formatTokenTime(token.lastUsedAt))}${token.legacy ? " · imported legacy credential" : ""}</div>
+        </div>
+        <button class="danger" data-token-revoke="${escapeHTML(token.id)}" data-token-label="${escapeHTML(token.label || "CI deploy token")}">Revoke</button>
+      </div>`).join("") || `<div class="empty">No deploy tokens issued for this application.</div>`;
+      tokenList.querySelectorAll("[data-token-revoke]").forEach((button) => {
+        button.disabled = actionRunning || !agentConnected;
+        button.addEventListener("click", () => revokeDeployToken(button));
+      });
+    }
+
+    async function loadDeployTokens() {
+      if (!tokenAppName) return;
+      tokenList.innerHTML = `<div class="empty">Loading deploy tokens...</div>`;
+      try {
+        const data = await agentFetch(`/apps/${encodeURIComponent(tokenAppName)}/deploy-tokens`);
+        renderDeployTokens(data.deployTokens || data.DeployTokens || []);
+      } catch (error) {
+        tokenList.innerHTML = `<div class="empty">${escapeHTML(error.message)}</div>`;
+      }
+    }
+
+    async function openDeployTokenDialog(appName) {
+      tokenAppName = appName;
+      tokenDialogTitle.textContent = `CI deploy tokens · ${appName}`;
+      tokenLabel.value = "GitHub Actions";
+      tokenSecret.value = "";
+      tokenIssued.hidden = true;
+      tokenMessage.textContent = "";
+      tokenDialog.showModal();
+      await loadDeployTokens();
+    }
+
+    async function mintDeployToken() {
+      if (!tokenAppName) return;
+      const appName = tokenAppName;
+      tokenMint.disabled = true;
+      setButtonLoading(tokenMint, true);
+      tokenMessage.textContent = "Generating a cryptographically random token...";
+      try {
+        const data = await agentFetch(`/apps/${encodeURIComponent(appName)}/deploy-tokens`, {
+          method: "POST",
+          body: JSON.stringify({ label: tokenLabel.value.trim() })
+        });
+        const issued = data.issuedToken || data.IssuedToken;
+        if (!issued?.token) throw new Error("agent did not return the one-time token");
+        if (!tokenDialog.open || tokenAppName !== appName) return;
+        tokenSecret.value = issued.token;
+        tokenIssued.hidden = false;
+        tokenMessage.textContent = "Token generated. Add it to the CI repository secret before closing this dialog.";
+        await loadDeployTokens();
+        tokenSecret.focus();
+        tokenSecret.select();
+      } catch (error) {
+        tokenMessage.textContent = `Token generation failed: ${error.message}`;
+      } finally {
+        tokenMint.disabled = false;
+        setButtonLoading(tokenMint, false);
+      }
+    }
+
+    async function revokeDeployToken(button) {
+      const id = button.dataset.tokenRevoke;
+      const label = button.dataset.tokenLabel || "CI deploy token";
+      const confirmed = await confirmPowerfulAction("deploy-token-revoke", `${tokenAppName} / ${label}`);
+      if (confirmed === null) return;
+      setActionBusy(true, button);
+      tokenMessage.textContent = `Revoking ${label}...`;
+      try {
+        await agentFetch(`/apps/${encodeURIComponent(tokenAppName)}/deploy-tokens/${encodeURIComponent(id)}`, { method: "DELETE" });
+        tokenMessage.textContent = `${label} was revoked immediately.`;
+        await loadDeployTokens();
+      } catch (error) {
+        tokenMessage.textContent = `Token revocation failed: ${error.message}`;
+      } finally {
+        setActionBusy(false);
+      }
+    }
+
+    async function copyDeployToken() {
+      if (!tokenSecret.value) return;
+      try {
+        await navigator.clipboard.writeText(tokenSecret.value);
+      } catch (_) {
+        tokenSecret.focus();
+        tokenSecret.select();
+        document.execCommand("copy");
+      }
+      tokenMessage.textContent = "Token copied. Store it as a masked CI repository secret now.";
+    }
+
     function bindActionButtons() {
       const unlocked = agentConnected;
       document.querySelectorAll("[data-action]").forEach((button) => {
@@ -1527,6 +1705,12 @@
         button.dataset.bound = "true";
         button.disabled = !unlocked || actionRunning;
         button.addEventListener("click", () => updateApplicationImage(button));
+      });
+      document.querySelectorAll("[data-deploy-tokens]").forEach((button) => {
+        if (button.dataset.bound === "true") return;
+        button.dataset.bound = "true";
+        button.disabled = !unlocked || actionRunning;
+        button.addEventListener("click", () => openDeployTokenDialog(button.dataset.deployTokens));
       });
     }
 
@@ -1690,6 +1874,7 @@
     }
 
     function lockAgentSession() {
+      closeDeployTokenDialog();
       localStorage.removeItem("poolctlAgentToken");
       tokenInput.value = "";
       setUnlocked(false);
@@ -1724,6 +1909,11 @@
     appCancel.addEventListener("click", closeAppDialog);
     appDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeAppDialog(); });
     appForm.addEventListener("submit", registerApplication);
+    tokenClose.addEventListener("click", closeDeployTokenDialog);
+    tokenDone.addEventListener("click", closeDeployTokenDialog);
+    tokenDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeDeployTokenDialog(); });
+    tokenMint.addEventListener("click", mintDeployToken);
+    tokenCopy.addEventListener("click", copyDeployToken);
     copyOutput.addEventListener("click", async () => {
       if (!output.textContent) return;
       try {

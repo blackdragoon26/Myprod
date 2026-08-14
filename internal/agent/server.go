@@ -28,15 +28,12 @@ const (
 )
 
 type server struct {
-	addr               string
-	store              pool.Store
-	token              string
-	deployToken        string
-	cutableDeployToken string
-	appDeployTokens    map[string]string
-	runNomad           func(context.Context, ...string) (string, error)
-	dns                dnsManager
-	deployMu           sync.Mutex
+	addr     string
+	store    pool.Store
+	token    string
+	runNomad func(context.Context, ...string) (string, error)
+	dns      dnsManager
+	deployMu sync.Mutex
 }
 
 type nomadNode struct {
@@ -68,21 +65,29 @@ type nomadJobStatus struct {
 }
 
 type response struct {
-	OK           bool              `json:"ok"`
-	Error        string            `json:"error,omitempty"`
-	Output       string            `json:"output,omitempty"`
-	Config       any               `json:"config,omitempty"`
-	State        any               `json:"state,omitempty"`
-	Checks       []check           `json:"checks,omitempty"`
-	System       systemState       `json:"system,omitempty"`
-	Resources    []nodeResource    `json:"resources,omitempty"`
-	DNS          dnsCapability     `json:"dns"`
-	Capabilities agentCapabilities `json:"capabilities,omitempty"`
-	Updated      string            `json:"updated,omitempty"`
+	OK           bool                       `json:"ok"`
+	Error        string                     `json:"error,omitempty"`
+	Output       string                     `json:"output,omitempty"`
+	Config       any                        `json:"config,omitempty"`
+	State        any                        `json:"state,omitempty"`
+	Checks       []check                    `json:"checks,omitempty"`
+	System       systemState                `json:"system,omitempty"`
+	Resources    []nodeResource             `json:"resources,omitempty"`
+	DNS          dnsCapability              `json:"dns"`
+	Capabilities agentCapabilities          `json:"capabilities,omitempty"`
+	DeployTokens []pool.DeployTokenMetadata `json:"deployTokens,omitempty"`
+	IssuedToken  *issuedDeployToken         `json:"issuedToken,omitempty"`
+	Updated      string                     `json:"updated,omitempty"`
 }
 
 type agentCapabilities struct {
 	ManagedAppLifecycleV2 bool `json:"managedAppLifecycleV2"`
+	AppDeployTokensV1     bool `json:"appDeployTokensV1"`
+}
+
+type issuedDeployToken struct {
+	pool.DeployTokenMetadata
+	Token string `json:"token"`
 }
 
 type check struct {
@@ -177,11 +182,21 @@ func Serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	store := pool.NewStore(storeDir)
+	legacyTokens := make([]pool.LegacyDeployToken, 0, len(appDeployTokens)+2)
+	for appName, appToken := range appDeployTokens {
+		legacyTokens = append(legacyTokens, pool.LegacyDeployToken{App: appName, Label: "Imported POOLCTL_APP_DEPLOY_TOKENS_JSON token", Token: appToken})
+	}
+	legacyTokens = append(legacyTokens,
+		pool.LegacyDeployToken{App: p4LensAppName, Label: "Imported P4Lens compatibility token", Token: deployToken},
+		pool.LegacyDeployToken{App: cutableAppName, Label: "Imported Cutable compatibility token", Token: cutableDeployToken},
+	)
+	if err := store.InitializeDeployTokens(legacyTokens); err != nil {
+		return fmt.Errorf("initialize deploy token store: %w", err)
+	}
 	s := &server{
-		addr: addr, store: pool.NewStore(storeDir), token: token,
-		deployToken: deployToken, cutableDeployToken: cutableDeployToken,
-		appDeployTokens: appDeployTokens,
-		runNomad:        runNomad, dns: newNetlifyDNSFromEnv(),
+		addr: addr, store: store, token: token,
+		runNomad: runNomad, dns: newNetlifyDNSFromEnv(),
 	}
 
 	mux := http.NewServeMux()
@@ -199,15 +214,15 @@ func Serve(args []string) error {
 }
 
 func (s *server) handleP4LensDeploy(w http.ResponseWriter, r *http.Request) {
-	s.handleScopedDeploy(w, r, s.deployToken, p4LensAppName, p4LensImagePrefix)
+	s.handleScopedDeploy(w, r, p4LensAppName, p4LensImagePrefix)
 }
 
 func (s *server) handleCutableDeploy(w http.ResponseWriter, r *http.Request) {
-	s.handleScopedDeploy(w, r, s.cutableDeployToken, cutableAppName, cutableImagePrefix)
+	s.handleScopedDeploy(w, r, cutableAppName, cutableImagePrefix)
 }
 
-func (s *server) handleScopedDeploy(w http.ResponseWriter, r *http.Request, token, appName, imagePrefix string) {
-	if !authorizedToken(w, r, token) {
+func (s *server) handleScopedDeploy(w http.ResponseWriter, r *http.Request, appName, imagePrefix string) {
+	if !s.authorizedAppDeploy(w, r, appName) {
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -383,6 +398,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		DNS:       s.dnsCapability(),
 		Capabilities: agentCapabilities{
 			ManagedAppLifecycleV2: true,
+			AppDeployTokensV1:     true,
 		},
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
@@ -432,6 +448,10 @@ func (s *server) handleApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := parts[0]
+	if len(parts) >= 2 && parts[1] == "deploy-tokens" {
+		s.handleAppDeployTokens(w, r, name, parts[2:])
+		return
+	}
 	if len(parts) == 2 && parts[1] == "image" {
 		if !s.authorizedAppDeploy(w, r, name) {
 			return
@@ -506,6 +526,61 @@ func (s *server) handleApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
+}
+
+func (s *server) handleAppDeployTokens(w http.ResponseWriter, r *http.Request, appName string, remainder []string) {
+	if !s.authorized(w, r) {
+		return
+	}
+	cfg, _, err := s.store.Load()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error()})
+		return
+	}
+	if _, ok := cfg.FindApp(appName); !ok {
+		writeJSON(w, http.StatusNotFound, response{OK: false, Error: fmt.Sprintf("unknown app %q", appName)})
+		return
+	}
+	if len(remainder) == 0 {
+		switch r.Method {
+		case http.MethodGet:
+			tokens, err := s.store.ListDeployTokens(appName)
+			if err != nil {
+				writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusOK, response{OK: true, DeployTokens: tokens, Updated: time.Now().UTC().Format(time.RFC3339)})
+		case http.MethodPost:
+			r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+			decoder := json.NewDecoder(r.Body)
+			decoder.DisallowUnknownFields()
+			var req struct {
+				Label string `json:"label"`
+			}
+			if err := decoder.Decode(&req); err != nil {
+				writeJSON(w, http.StatusBadRequest, response{OK: false, Error: "invalid deploy token request: " + err.Error()})
+				return
+			}
+			plaintext, metadata, err := s.store.MintDeployToken(appName, req.Label)
+			if err != nil {
+				writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
+				return
+			}
+			writeJSON(w, http.StatusCreated, response{OK: true, IssuedToken: &issuedDeployToken{DeployTokenMetadata: metadata, Token: plaintext}, Updated: time.Now().UTC().Format(time.RFC3339)})
+		default:
+			writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
+		}
+		return
+	}
+	if len(remainder) == 1 && remainder[0] != "" && r.Method == http.MethodDelete {
+		if err := s.store.RevokeDeployToken(appName, remainder[0]); err != nil {
+			writeJSON(w, http.StatusNotFound, response{OK: false, Error: err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, response{OK: true, Output: fmt.Sprintf("Revoked deploy token for %s.", appName), Updated: time.Now().UTC().Format(time.RFC3339)})
+		return
+	}
+	writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
 }
 
 func (s *server) handleSmoke(w http.ResponseWriter, r *http.Request) {
@@ -1073,20 +1148,7 @@ func (s *server) authorized(w http.ResponseWriter, r *http.Request) bool {
 		return false
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
-		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
-		return false
-	}
-	return true
-}
-
-func authorizedToken(w http.ResponseWriter, r *http.Request, token string) bool {
-	if token == "" {
-		writeJSON(w, http.StatusServiceUnavailable, response{OK: false, Error: "deployment endpoint is not configured"})
-		return false
-	}
-	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
+	if s.token == "" || subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
 		writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
 		return false
 	}
@@ -1099,10 +1161,15 @@ func (s *server) authorizedAppDeploy(w http.ResponseWriter, r *http.Request, app
 		return false
 	}
 	got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
+	if s.token != "" && subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) == 1 {
 		return true
 	}
-	if scoped := s.appDeployTokens[appName]; scoped != "" && subtle.ConstantTimeCompare([]byte(got), []byte(scoped)) == 1 {
+	authorized, err := s.store.AuthorizeDeployToken(appName, got)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{OK: false, Error: "deploy token authorization failed"})
+		return false
+	}
+	if authorized {
 		return true
 	}
 	writeJSON(w, http.StatusUnauthorized, response{OK: false, Error: "unauthorized"})
@@ -1237,7 +1304,7 @@ func withHeaders(next http.Handler) http.Handler {
 			w.Header().Set("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		next.ServeHTTP(w, r)
 	})

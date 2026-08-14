@@ -128,6 +128,12 @@ Secret values are installed separately on the target node at
 agent store. Private-registry credentials and persistent volumes remain
 unsupported. Do not place credentials in application fields.
 
+Each managed app also has a **CI tokens** control. The Oracle agent mints a
+high-entropy deploy credential, shows it once, and stores only its digest.
+Operators can rotate or revoke these app-scoped tokens live without restarting
+the agent. This credential surface is intentionally separate from application
+runtime secrets, which remain SSH-installed on the target node.
+
 Reserved projects appear under **Project Reservations** beside the managed app inventory. They are shown separately because a reserved machine is infrastructure capacity, not evidence that an application has been deployed.
 
 Powerful controls require an action-specific confirmation in both hosted and local dashboards. A confirmation reduces operator mistakes; the Oracle agent token and Nomad ACLs remain the actual authorization boundary.

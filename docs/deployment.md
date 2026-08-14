@@ -66,6 +66,9 @@ response. When an older agent omits `managedAppLifecycleV2`, the dashboard keeps
 the original registration and deploy flow, omits new request fields, and hides
 edit, delete, generic image-update, and environment controls. This makes either
 deployment order safe and does not resubmit or restart existing Nomad jobs.
+The **CI tokens** control is independently gated by `appDeployTokensV1`; it is
+hidden until the agent can mint, hash-store, list, and revoke scoped
+credentials. Neither capability causes a Nomad job submission during rollout.
 
 For an agent change:
 

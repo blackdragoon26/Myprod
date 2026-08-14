@@ -1,10 +1,125 @@
 package pool
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestDeployTokenLifecycleStoresOnlyDigests(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), ".poolctl")
+	store := NewStore(dir)
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InitializeDeployTokens(nil); err != nil {
+		t.Fatal(err)
+	}
+	plaintext, metadata, err := store.MintDeployToken("sample-api", "GitHub Actions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(plaintext, "poolctl_v1.") || metadata.Label != "GitHub Actions" {
+		t.Fatalf("plaintext=%q metadata=%#v", plaintext, metadata)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, deployTokensFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), plaintext) {
+		t.Fatal("deploy token store persisted plaintext")
+	}
+	info, err := os.Stat(filepath.Join(dir, deployTokensFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("deploy token store mode = %o", info.Mode().Perm())
+	}
+	authorized, err := store.AuthorizeDeployToken("sample-api", plaintext)
+	if err != nil || !authorized {
+		t.Fatalf("authorized=%t err=%v", authorized, err)
+	}
+	tokens, err := store.ListDeployTokens("sample-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 1 || tokens[0].LastUsedAt == nil {
+		t.Fatalf("tokens = %#v", tokens)
+	}
+	if err := store.RevokeDeployToken("sample-api", metadata.ID); err != nil {
+		t.Fatal(err)
+	}
+	authorized, err = store.AuthorizeDeployToken("sample-api", plaintext)
+	if err != nil || authorized {
+		t.Fatalf("revoked token authorized=%t err=%v", authorized, err)
+	}
+}
+
+func TestLegacyDeployTokensImportOnlyOnce(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), ".poolctl")
+	store := NewStore(dir)
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	first := strings.Repeat("a", 32)
+	second := strings.Repeat("b", 32)
+	if err := store.InitializeDeployTokens([]LegacyDeployToken{{App: "sample-api", Label: "legacy", Token: first}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InitializeDeployTokens([]LegacyDeployToken{{App: "sample-api", Label: "must not reimport", Token: second}}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := store.AuthorizeDeployToken("sample-api", first); err != nil || !ok {
+		t.Fatalf("first legacy token authorized=%t err=%v", ok, err)
+	}
+	if ok, err := store.AuthorizeDeployToken("sample-api", second); err != nil || ok {
+		t.Fatalf("second legacy token authorized=%t err=%v", ok, err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, deployTokensFilename))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), first) || strings.Contains(string(raw), second) {
+		t.Fatal("legacy plaintext persisted in deploy token store")
+	}
+}
+
+func TestDeleteAppRemovesTokensWithoutSkippingFutureLegacyImport(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), ".poolctl")
+	store := NewStore(dir)
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteApp("sample-api"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, deployTokensFilename)); !os.IsNotExist(err) {
+		t.Fatalf("delete without token store created migration marker: %v", err)
+	}
+
+	store = NewStore(filepath.Join(t.TempDir(), ".poolctl"))
+	if _, err := store.Init(); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.InitializeDeployTokens(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.MintDeployToken("sample-api", "CI"); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.DeleteApp("sample-api"); err != nil {
+		t.Fatal(err)
+	}
+	tokens, err := store.ListDeployTokens("sample-api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tokens) != 0 {
+		t.Fatalf("deleted app tokens = %#v", tokens)
+	}
+}
 
 func TestStoreInitAndLoad(t *testing.T) {
 	store := NewStore(filepath.Join(t.TempDir(), ".poolctl"))

@@ -97,6 +97,20 @@ After deployment, refresh the dashboard and verify:
 - the expected allocation runs on the selected node;
 - the health path and public HTTPS route return HTTP 2xx.
 
+## CI Deploy Tokens Versus Application Secrets
+
+Myprod issues app-scoped CI credentials from the **CI tokens** control. The
+agent generates 32 random bytes, returns the plaintext once, and stores only a
+digest. Copy it directly into a masked repository secret. The token can update
+only that app and only to an immutable digest in its registered image
+repository. Creation time, last-used time, and revocation remain available in
+the dashboard without an agent restart.
+
+Application-consumed credentials are a separate trust category. Values such
+as `GITHUB_TOKEN`, passwords, API keys, and TOTP seeds must not enter this
+dialog or any application field. They remain in the operator-installed runtime
+environment file on the exact target node.
+
 ## Resource Utilization
 
 The dashboard reads actual client statistics from Nomad for every node:

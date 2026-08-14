@@ -69,6 +69,13 @@ variable name looks credential-bearing (for example, it contains `TOKEN`,
 secrets cannot use the fixed operator-installed file, stop and report that the
 hosted app form cannot safely represent the workload.
 
+After registration, a Myprod operator may mint an app-scoped CI deploy token
+from the hosted dashboard and place it in the repository's masked Actions
+secrets. Project agents must never request the dashboard-wide operator token.
+The CI workflow may call only the generic immutable-image endpoint for its own
+app and repository. Deploy-token issuance does not change the rule above:
+credentials consumed by the application itself remain SSH-installed.
+
 ## SpliDT Agent Context
 
 Give the SpliDT agent the following task:
