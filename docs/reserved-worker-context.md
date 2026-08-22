@@ -4,31 +4,36 @@ This document is the handoff contract for agents using project-reserved Myprod w
 
 ## Current Assignment
 
-| Project | Worker | Public IP | Architecture | Scheduler state |
-| --- | --- | --- | --- | --- |
-| `splidt` | `do-worker-1` | `188.166.182.174` | `x86_64` | Nomad ineligible, reserved |
+There is no active project reservation. `splidt-showcase` is an ordinary
+managed application on `oracle-worker-1`; the worker remains eligible for
+Nomad scheduling.
 
-The reservation covers the entire worker. It keeps shared Nomad workloads away; it does not make unsafe host changes reversible.
+Do not treat managed-app placement as permission to install project tooling on
+the host. Create an explicit reservation first if future work needs host-level
+packages or exclusive ownership.
 
 ## Required Entry Checks
 
-Connect only to the reserved worker:
+After an explicit reservation, connect only to the worker named by current pool
+state. For the present Oracle worker:
 
 ```sh
-ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@188.166.182.174
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146
 ```
 
 Then run:
 
 ```sh
-cat /opt/splidt/AGENTS.md
 hostname
 uname -m
 systemctl is-active ssh nomad docker wg-quick@wg0
 df -h /
 ```
 
-Expected identity is `do-worker-1` and `x86_64`. Stop if either differs, if `/opt/splidt/AGENTS.md` is missing, or if SSH/WireGuard is unhealthy.
+Expected identity is `oracle-worker-1` and `aarch64`. Stop if either differs or
+if SSH, Nomad, Docker, or WireGuard is unhealthy. If a future reservation adds
+project-specific instructions under `/opt/<project>/AGENTS.md`, read them
+before making host changes.
 
 ## Allowed Project Work
 
@@ -77,7 +82,8 @@ The public API check verifies the shared control plane remains healthy; a projec
 
 ## Recovery
 
-No pre-install DigitalOcean snapshot exists as of 2026-07-14; the user explicitly declined the recurring snapshot cost and temporary shutdown. Agents must not assume image-level rollback is available.
+No image-level rollback is documented for `oracle-worker-1`. Agents must not
+assume a boot-volume backup or snapshot exists.
 
 Before a risky change, capture the affected files, package list, and service configuration under `/opt/splidt/checkpoints/<UTC timestamp>/`. File-level checkpoints do not replace a machine snapshot, but they provide a scoped rollback path without adding cloud cost.
 

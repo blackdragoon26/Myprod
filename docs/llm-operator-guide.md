@@ -12,6 +12,9 @@ production boundaries that must not be inferred from old chat history.
 - Repository: <https://github.com/blackdragoon26/Myprod>
 - Oracle control plane: `ubuntu@140.245.5.201`
 - Oracle architecture: Linux ARM64 (`GOOS=linux`, `GOARCH=arm64`)
+- Oracle worker: `oracle-worker-1`, `ubuntu@140.245.228.146`, overlay
+  `10.44.0.3`, Linux ARM64
+- Current pool: two Oracle nodes; no DigitalOcean worker is registered
 
 Do not claim access to Clerk, Vercel, Netlify, GitHub, Oracle, or a DNS provider
 until the current environment actually proves that access. Never transcribe a
@@ -27,7 +30,7 @@ credential from a screenshot.
 | CI deploy-token mint, rotate, revoke | [`agent-runbook.md`](agent-runbook.md) sections 8–9 |
 | DNS credentials or managed records | [`netlify-dns.md`](netlify-dns.md) |
 | Join, freeze, drain, resize, or destroy a node | [`agent-runbook.md`](agent-runbook.md) |
-| Use the reserved Splidt worker | [`reserved-worker-context.md`](reserved-worker-context.md) |
+| Reserve or perform host-level work on a worker | [`reserved-worker-context.md`](reserved-worker-context.md) |
 
 ## Credential Boundaries
 

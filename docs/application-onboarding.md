@@ -87,13 +87,13 @@ host-level package. Do not modify Myprod or any VPS.
 
 Start from the current SpliDT showcase work and preserve its explicit evidence
 boundaries. The lightweight public backend is showcase/server.py and the image
-definition is showcase/Dockerfile. It must remain an unprivileged Linux AMD64
-container listening on 0.0.0.0:8765. Use
+definition is showcase/Dockerfile. It must remain an unprivileged Linux
+container for both AMD64 and ARM64, listening on 0.0.0.0:8765. Use
 /api/system/capabilities as the read-only HTTP health path.
 
-Run the showcase Python tests, build the image for linux/amd64, start it
-locally, call the health endpoint, and run one curated API smoke flow. Add a
-GitHub Actions workflow that publishes immutable commit-tagged images to GHCR.
+Run the showcase Python tests, build the image for linux/amd64 and linux/arm64,
+start it locally, call the health endpoint, and run one curated API smoke flow.
+Add a GitHub Actions workflow that publishes immutable commit-tagged images to GHCR.
 Do not use only latest. Report the exact image digest and verify an anonymous
 docker pull works after the package is made public.
 
@@ -112,7 +112,7 @@ Expected SpliDT values, subject to verification by that agent:
 
 ```txt
 name: splidt-showcase
-architecture: linux/amd64
+architecture: linux/amd64, linux/arm64
 container port: 8765
 health path: /api/system/capabilities
 recommended CPU MHz: 1000
@@ -122,8 +122,12 @@ required environment variables: none for the current public-CORS release
 required secrets: none
 ```
 
-The image and digest are deliberately omitted until a CI publication run proves
-them. DNS remains an operator-controlled step, but Myprod can now create and
-verify the Netlify A record during registration. The recommended backend
-hostname is `splidt-api.sankalpjha.dev`, pointing to Oracle ingress
+The production deployment was verified on 2026-08-22 using multi-platform
+digest
+`ghcr.io/blackdragoon26/splidt-showcase@sha256:4efb4907cf4ce1e18e2a9b2540368b5c02a877a97aa07193bff0a964413443f7`.
+Nomad places it on ARM64 node `oracle-worker-1`; the public capability endpoint
+reports `aarch64` and build revision
+`48cfecc5cdd7963fc63ad62e53533f106cc355e0`. DNS remains operator-controlled,
+but Myprod can create and verify the Netlify A record during registration. The
+backend hostname is `splidt-api.sankalpjha.dev`, pointing to Oracle ingress
 `140.245.5.201`.

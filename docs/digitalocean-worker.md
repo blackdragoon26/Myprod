@@ -1,5 +1,9 @@
 # DigitalOcean Worker Node
 
+> Optional provider guide only. Production currently has no DigitalOcean
+> worker; `do-worker-1` was retired on 2026-08-22. Follow the live pool state
+> and `agent-runbook.md` rather than assuming the example node exists.
+
 This guide creates one cost-efficient DigitalOcean Droplet and registers it in the local `poolctl web` dashboard.
 
 ## Recommended Droplet

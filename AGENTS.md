@@ -27,19 +27,19 @@ fallback alias.
 
 ## Reserved Project Workers
 
-Before using a reserved worker, read `docs/reserved-worker-context.md`. The
-current `splidt` workspace is the whole `do-worker-1` machine at
-`188.166.182.174`; it is not a directory on `oracle-main`.
+Before using a reserved worker, read `docs/reserved-worker-context.md`. There
+is currently no reserved project worker. `splidt-showcase` is a managed app on
+`oracle-worker-1`, not permission to modify that host for project work.
 
 - Project installation is allowed only on the worker named by the reservation.
 - Never run project installers on `oracle-main` (`140.245.5.201`).
 - Never release or unfreeze a reservation just to make an installation work.
-- Preserve SSH, WireGuard, Nomad, Docker, host routing, and DigitalOcean
-  firewall access unless the user explicitly approves rebuilding the worker.
-- On `do-worker-1`, read `/opt/splidt/AGENTS.md` before using `sudo` and append
-  material host changes to `/opt/splidt/CHANGELOG.md`.
-- No pre-install snapshot exists for `splidt`. Create a scoped file/configuration
-  checkpoint before risky changes and never claim image-level rollback exists.
+- Preserve SSH, WireGuard, Nomad, Docker, host routing, and provider firewall
+  access unless the user explicitly approves rebuilding the worker.
+- If a future reservation has `/opt/<project>/AGENTS.md`, read it before using
+  `sudo` and record material host changes in the project changelog.
+- Create a scoped file/configuration checkpoint before risky changes and never
+  claim image-level rollback exists without verifying a current backup.
 - Ask before rebooting, powering off, resizing, restoring, or deleting a worker.
 
 ## Verification
