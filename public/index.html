@@ -445,7 +445,7 @@
     .node-actions button { height: 30px; padding: 0 10px; font-size: 12px; }
 
     /* ---------- Resource telemetry ---------- */
-    .resource-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .resource-grid { display: block; }
     .resource-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; min-width: 0; }
     .resource-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
     .resource-metrics { display: grid; gap: 12px; }
@@ -456,6 +456,79 @@
     .meter > span { display: block; height: 100%; width: 0; background: var(--ok); border-radius: inherit; }
     .meter > span.warn { background: var(--warn); }
     .meter > span.bad { background: var(--bad); }
+    .oracle-resource-shell { display: grid; gap: 14px; }
+    .oracle-pool-card {
+      width: 100%; height: auto; min-height: 292px;
+      display: grid; grid-template-columns: minmax(220px, .75fr) minmax(280px, 1.25fr);
+      align-items: center; justify-items: center; gap: 28px;
+      padding: 24px; text-align: left;
+      background: var(--surface-2); border-color: var(--border);
+    }
+    .oracle-pool-card:hover { border-color: var(--accent); background: var(--surface-2); }
+    .usage-ring {
+      --usage: 0;
+      --ring-color: var(--ok);
+      position: relative; width: 220px; height: 220px; flex: 0 0 auto;
+      display: grid; place-items: center;
+      border-radius: 50%;
+      background: conic-gradient(var(--ring-color) calc(var(--usage) * 1%), var(--surface-3) 0);
+      box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border) 60%, transparent);
+    }
+    .usage-ring::before {
+      content: ""; position: absolute; inset: 16px;
+      border-radius: inherit; background: var(--surface);
+      box-shadow: 0 0 0 1px var(--border), var(--shadow-sm);
+    }
+    .usage-ring.warn { --ring-color: var(--warn); }
+    .usage-ring.bad { --ring-color: var(--bad); }
+    .usage-ring.compact { width: 164px; height: 164px; }
+    .usage-ring.compact::before { inset: 12px; }
+    .ring-content { position: relative; z-index: 1; display: grid; justify-items: center; gap: 1px; text-align: center; }
+    .ring-value { color: var(--text); font-size: 34px; font-weight: 650; line-height: 1; letter-spacing: -.04em; }
+    .usage-ring.compact .ring-value { font-size: 27px; }
+    .ring-label { color: var(--text-muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+    .pool-copy { width: 100%; display: grid; gap: 14px; }
+    .pool-copy h3 { font-size: 19px; }
+    .pool-copy p { color: var(--text-muted); font-size: 13px; }
+    .pool-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .pool-stat {
+      display: grid; gap: 2px; padding: 10px 11px;
+      border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+    }
+    .pool-stat span { color: var(--text-muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .pool-stat strong { color: var(--text); font-size: 14px; }
+    .pool-hint { color: var(--accent); font-size: 12px; font-weight: 600; }
+    .oracle-split-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .oracle-split-head button { height: 32px; }
+    .oracle-node-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .oracle-node-panel {
+      display: grid; gap: 16px; padding: 18px;
+      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      animation: oracle-node-in .22s ease-out both;
+    }
+    .oracle-node-panel:nth-child(2) { animation-delay: .04s; }
+    @keyframes oracle-node-in {
+      from { opacity: 0; transform: translateY(6px) scale(.98); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .node-visual { display: flex; align-items: center; gap: 18px; }
+    .node-visual-copy { min-width: 0; display: grid; gap: 6px; }
+    .node-visual-copy h3 { overflow-wrap: anywhere; font-size: 15px; }
+    .node-visual-copy .pill { justify-self: start; }
+    .node-visual-copy p { color: var(--text-muted); font-size: 12px; }
+    .node-stat-list { display: grid; gap: 8px; }
+    .node-stat-row { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 11px; }
+    .node-stat-row > span:first-child { color: var(--text-muted); }
+    .node-stat-row strong { font-weight: 600; }
+    .backend-reservations { display: grid; gap: 7px; padding-top: 13px; border-top: 1px solid var(--border); }
+    .backend-reservations h4 { margin: 0; color: var(--text-muted); font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .06em; }
+    .backend-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+      padding: 8px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface);
+    }
+    .backend-row strong { overflow-wrap: anywhere; font-size: 12px; }
+    .backend-row span { color: var(--text-muted); font-size: 11px; text-align: right; }
+    .backend-empty { color: var(--text-muted); font-size: 12px; }
 
     /* ---------- Output ---------- */
     pre {
@@ -512,6 +585,9 @@
       header, .hero { grid-template-columns: 1fr; }
       .span-4, .span-5, .span-7, .span-8, .span-12 { grid-column: span 12; }
       .summary-row, .status-grid { grid-template-columns: 1fr 1fr; }
+      .oracle-pool-card { grid-template-columns: 1fr; text-align: center; }
+      .pool-copy { justify-items: center; }
+      .pool-stat-grid { width: 100%; }
     }
     @media (max-width: 560px) {
       main { padding: 10px; }
@@ -524,6 +600,9 @@
       .recovery-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-column: 1 / -1; }
       .auth-result { grid-column: 1 / -1; }
       .summary-row, .status-grid, .resource-grid, .form-grid { grid-template-columns: 1fr; }
+	  .oracle-node-grid, .pool-stat-grid { grid-template-columns: 1fr; }
+	  .oracle-pool-card { padding: 18px 12px; }
+	  .node-visual { flex-direction: column; text-align: center; }
 	  .token-mint, .token-secret-row { grid-template-columns: 1fr; }
       .field.wide { grid-column: auto; }
       .card, .hero-main, .assistant-panel { padding: 14px; }
@@ -909,7 +988,7 @@
         </details>
         <details>
           <summary>What does Resource Utilization show?</summary>
-          <div class="faq-answer"><p>CPU, memory, and root-disk figures are actual host measurements returned by Nomad client statistics. App CPU and memory values are reservations. They describe scheduler capacity promised to an app and are not the app's current process usage.</p></div>
+          <div class="faq-answer"><p>The combined Oracle circle summarizes live CPU, memory, and root-disk utilization across reporting Oracle nodes. Click it to split the view into one circle per node. Each node then lists its managed backends and their Nomad CPU and memory reservations; those reservation values are scheduler capacity promised to an app, not its current process usage.</p></div>
         </details>
         <details>
           <summary>What can node actions change?</summary>
@@ -1053,8 +1132,11 @@
     let actionRunning = false;
     let agentConnected = false;
     let latestConfig = {};
+    let latestState = {};
     let latestDNS = {};
     let latestCapabilities = {};
+    let latestResources = [];
+    let resourceChartExpanded = false;
     let latencyHistory = [];
     let editingAppName = "";
     let tokenAppName = "";
@@ -1327,11 +1409,14 @@
           name: resource.name || "", status: resource.status || "",
           cpuUsedPercent: resource.cpuUsedPercent || 0,
           memoryUsedBytes: resource.memoryUsedBytes || 0,
+          memoryTotalBytes: resource.memoryTotalBytes || 0,
           memoryAvailableBytes: resource.memoryAvailableBytes || 0,
           memoryUsedPercent: resource.memoryUsedPercent || 0,
           diskUsedBytes: resource.diskUsedBytes || 0,
+          diskTotalBytes: resource.diskTotalBytes || 0,
           diskAvailableBytes: resource.diskAvailableBytes || 0,
           diskUsedPercent: resource.diskUsedPercent || 0,
+          uptimeSeconds: resource.uptimeSeconds || 0,
           error: resource.error || ""
         })),
         Updated: data.Updated || data.updated || new Date().toISOString()
@@ -1405,23 +1490,113 @@
       </div>`;
     }
 
+    function resourceSummary(resources) {
+      const available = resources.filter((resource) => !resource.error);
+      const average = (key) => available.length
+        ? available.reduce((sum, resource) => sum + boundedPercent(resource[key]), 0) / available.length
+        : 0;
+      const totals = (usedKey, totalKey, availableKey) => available.reduce((sum, resource) => {
+        const used = Number(resource[usedKey]) || 0;
+        const total = Number(resource[totalKey]) || used + (Number(resource[availableKey]) || 0);
+        sum.used += used;
+        sum.total += total;
+        return sum;
+      }, { used: 0, total: 0 });
+      const memory = totals("memoryUsedBytes", "memoryTotalBytes", "memoryAvailableBytes");
+      const disk = totals("diskUsedBytes", "diskTotalBytes", "diskAvailableBytes");
+      const cpuPercent = average("cpuUsedPercent");
+      const memoryPercent = memory.total ? memory.used / memory.total * 100 : average("memoryUsedPercent");
+      const diskPercent = disk.total ? disk.used / disk.total * 100 : average("diskUsedPercent");
+      return {
+        available: available.length,
+        cpuPercent, memoryPercent, diskPercent,
+        overallPercent: (cpuPercent + memoryPercent + diskPercent) / 3,
+        memoryUsedBytes: memory.used, memoryTotalBytes: memory.total,
+        diskUsedBytes: disk.used, diskTotalBytes: disk.total
+      };
+    }
+
+    function ringMarkup(percent, label, compact = false) {
+      const value = boundedPercent(percent);
+      return `<div class="usage-ring ${compact ? "compact" : ""} ${meterTone(value)}" style="--usage:${value.toFixed(1)}" role="meter" aria-label="${escapeHTML(label)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${value.toFixed(1)}">
+        <div class="ring-content"><strong class="ring-value">${value.toFixed(0)}%</strong><span class="ring-label">${escapeHTML(label)}</span></div>
+      </div>`;
+    }
+
+    function backendReservations(nodeName) {
+      const appState = latestState.Apps || {};
+      const apps = (latestConfig.Apps || []).filter((app) => {
+        const live = appState[app.Name] || {};
+        return (live.Node || app.PreferNode || "") === nodeName;
+      });
+      if (!apps.length) return `<p class="backend-empty">No managed backends reserved on this node.</p>`;
+      return apps.map((app) => `<div class="backend-row">
+        <strong>${escapeHTML(app.Name)}</strong>
+        <span>${escapeHTML(app.CPU || 500)} MHz · ${escapeHTML(app.MemoryMB || 512)} MB</span>
+      </div>`).join("");
+    }
+
+    function nodeResourcePanel(resource) {
+      if (resource.error) {
+        return `<article class="oracle-node-panel"><div class="resource-head"><h3>${escapeHTML(resource.name || "Oracle node")}</h3>${statePill("unavailable")}</div><p class="muted">${escapeHTML(resource.error)}</p></article>`;
+      }
+      const summary = resourceSummary([resource]);
+      return `<article class="oracle-node-panel">
+        <div class="node-visual">
+          ${ringMarkup(summary.overallPercent, "overall", true)}
+          <div class="node-visual-copy"><h3>${escapeHTML(resource.name)}</h3>${statePill(resource.status || "unknown")}<p>Live host usage across CPU, memory, and root disk.</p></div>
+        </div>
+        <div class="node-stat-list">
+          ${metric("CPU", `${summary.cpuPercent.toFixed(1)}% used`, `${(100 - summary.cpuPercent).toFixed(1)}%`, summary.cpuPercent)}
+          ${metric("Memory", `${formatBytes(summary.memoryUsedBytes)} used`, formatBytes(Math.max(0, summary.memoryTotalBytes - summary.memoryUsedBytes)), summary.memoryPercent)}
+          ${metric("Root disk", `${formatBytes(summary.diskUsedBytes)} used`, formatBytes(Math.max(0, summary.diskTotalBytes - summary.diskUsedBytes)), summary.diskPercent)}
+        </div>
+        <div class="backend-reservations"><h4>Backend reservations</h4>${backendReservations(resource.name)}</div>
+      </article>`;
+    }
+
     function renderResources(resources) {
-      resourceGrid.innerHTML = resources.map((resource) => {
-        if (resource.error) {
-          return `<article class="resource-card"><div class="resource-head"><h3>${escapeHTML(resource.name || "Nomad")}</h3>${statePill("unavailable")}</div><p class="muted">${escapeHTML(resource.error)}</p></article>`;
-        }
-        const cpu = boundedPercent(resource.cpuUsedPercent);
-        const memory = boundedPercent(resource.memoryUsedPercent);
-        const disk = boundedPercent(resource.diskUsedPercent);
-        return `<article class="resource-card">
-          <div class="resource-head"><h3>${escapeHTML(resource.name)}</h3>${statePill(resource.status || "unknown")}</div>
-          <div class="resource-metrics">
-            ${metric("CPU", `${cpu.toFixed(1)}% used`, `${(100 - cpu).toFixed(1)}%`, cpu)}
-            ${metric("Memory", `${formatBytes(resource.memoryUsedBytes)} used`, formatBytes(resource.memoryAvailableBytes), memory)}
-            ${metric("Root disk", `${formatBytes(resource.diskUsedBytes)} used`, formatBytes(resource.diskAvailableBytes), disk)}
-          </div>
-        </article>`;
-      }).join("") || `<div class="empty">No live resource samples are available.</div>`;
+      latestResources = Array.isArray(resources) ? resources : [];
+      const configuredOracleNames = new Set((latestConfig.Nodes || [])
+        .filter((node) => String(node.Provider || node.provider || "").toLowerCase() === "oracle")
+        .map((node) => node.Name || node.name));
+      let oracleResources = latestResources.filter((resource) => configuredOracleNames.has(resource.name) || String(resource.name).startsWith("oracle-"));
+      if (!oracleResources.length && !configuredOracleNames.size) oracleResources = latestResources;
+      oracleResources.sort((left, right) => String(left.name).localeCompare(String(right.name)));
+      if (!oracleResources.length) {
+        resourceGrid.innerHTML = `<div class="empty">No live Oracle resource samples are available.</div>`;
+        return;
+      }
+      const summary = resourceSummary(oracleResources);
+      const allApps = (latestConfig.Apps || []).filter((app) => {
+        const live = (latestState.Apps || {})[app.Name] || {};
+        return oracleResources.some((resource) => resource.name === (live.Node || app.PreferNode || ""));
+      });
+      if (!resourceChartExpanded) {
+        resourceGrid.innerHTML = `<div class="oracle-resource-shell">
+          <button id="oracle-pool-toggle" class="oracle-pool-card" type="button" aria-expanded="false">
+            ${ringMarkup(summary.overallPercent, "pool load")}
+            <div class="pool-copy">
+              <div><h3>Combined Oracle pool</h3><p>${summary.available}/${oracleResources.length} nodes reporting · ${allApps.length} managed backend${allApps.length === 1 ? "" : "s"}</p></div>
+              <div class="pool-stat-grid">
+                <div class="pool-stat"><span>CPU</span><strong>${summary.cpuPercent.toFixed(1)}%</strong></div>
+                <div class="pool-stat"><span>Memory</span><strong>${formatBytes(summary.memoryUsedBytes)} / ${formatBytes(summary.memoryTotalBytes)}</strong></div>
+                <div class="pool-stat"><span>Root disk</span><strong>${formatBytes(summary.diskUsedBytes)} / ${formatBytes(summary.diskTotalBytes)}</strong></div>
+              </div>
+              <span class="pool-hint">Click to split by Oracle node →</span>
+            </div>
+          </button>
+        </div>`;
+      } else {
+        resourceGrid.innerHTML = `<div class="oracle-resource-shell">
+          <div class="oracle-split-head"><div><h3>Oracle nodes</h3><p class="muted">Live host usage and per-backend scheduler reservations.</p></div><button id="oracle-pool-toggle" type="button" aria-expanded="true">← Combined view</button></div>
+          <div class="oracle-node-grid">${oracleResources.map(nodeResourcePanel).join("")}</div>
+        </div>`;
+      }
+      document.getElementById("oracle-pool-toggle")?.addEventListener("click", () => {
+        resourceChartExpanded = !resourceChartExpanded;
+        renderResources(latestResources);
+      });
     }
 
     function markUpdated(value, cached = false) {
@@ -1587,6 +1762,7 @@
       const state = data.State || data.state || {};
       const system = data.System || data.system || {};
       latestConfig = config;
+      latestState = state;
       latestDNS = data.DNS || data.dns || {};
       latestCapabilities = data.Capabilities || data.capabilities || {};
       const managedAppLifecycleV2 = Boolean(latestCapabilities.managedAppLifecycleV2);

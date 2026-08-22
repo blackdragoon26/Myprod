@@ -119,9 +119,17 @@ The dashboard reads actual client statistics from Nomad for every node:
 - memory used, available, and percentage consumed;
 - root-disk used, available, and percentage consumed.
 
+The default visualization combines all reporting Oracle nodes into one pool
+circle. Its overall percentage is the simple mean of the combined CPU, memory,
+and root-disk percentages. Select the circle to split it into one circle per
+Oracle node. The expanded view keeps the live host measurements visible and
+lists the managed backends placed on each node with their configured Nomad CPU
+and memory reservations.
+
 These are point-in-time host measurements. Short CPU spikes can occur between
-refreshes. Capacity decisions should consider sustained behavior and all app
-reservations, not one sample alone.
+refreshes. Backend reservation values are scheduler capacity promised to an
+app, not current process usage. Capacity decisions should consider sustained
+behavior and all app reservations, not one sample alone.
 
 ## Locked And Cached Views
 
