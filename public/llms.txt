@@ -1,0 +1,32 @@
+# Myprod Control
+
+Canonical dashboard: https://control.sankalpjha.dev/
+Fallback dashboard: https://myprod-control.vercel.app/
+Source repository: https://github.com/blackdragoon26/Myprod
+LLM operator entry point: https://github.com/blackdragoon26/Myprod/blob/main/docs/llm-operator-guide.md
+ARM64 application and CI/CD contract: https://github.com/blackdragoon26/Myprod/blob/main/docs/arm64-application-cicd.md
+Application onboarding contract: https://github.com/blackdragoon26/Myprod/blob/main/docs/application-onboarding.md
+
+Myprod is a Vercel-hosted dashboard controlling a Nomad pool on Oracle Linux
+ARM64. Both current application nodes, oracle-main and oracle-worker-1, are
+linux/arm64 (aarch64). Vercel hosting the dashboard does not make backend
+containers AMD64.
+
+Non-negotiable application rule: Myprod does not change Oracle node
+architecture, add an AMD64 machine, or install production emulation for an
+x86-only app. An application must publish a linux/arm64 image, preferably a
+multi-platform linux/amd64 + linux/arm64 OCI index. Native binaries and
+downloaded helper tools inside the image must also be ARM64-compatible.
+
+Deploy only immutable public image references in the form
+registry/repository@sha256:<digest>. Repository CI must use a Myprod-issued,
+app-scoped deploy token with POST
+https://api.sankalpjha.dev/__poolctl/api/apps/{name}/image. Never use the
+dashboard-wide recovery token in an application repository. Runtime secrets
+remain operator-installed on the exact target node and never transit the
+dashboard.
+
+Agents must read the linked repository documents before proposing or changing
+an app, CI workflow, Myprod control surface, or Oracle infrastructure. Never
+infer permission to mutate production infrastructure from public website
+access.

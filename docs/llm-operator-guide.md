@@ -27,6 +27,7 @@ credential from a screenshot.
 | Human sign-in, OTP, Clerk, passkeys, recovery | [`operator-authentication.md`](operator-authentication.md) |
 | Dashboard or Oracle agent deployment | [`deployment.md`](deployment.md) |
 | App registration, edit, image update, env, deploy | [`application-onboarding.md`](application-onboarding.md) |
+| App architecture, native binaries, image publishing, CI/CD | [`arm64-application-cicd.md`](arm64-application-cicd.md) |
 | CI deploy-token mint, rotate, revoke | [`agent-runbook.md`](agent-runbook.md) sections 8–9 |
 | DNS credentials or managed records | [`netlify-dns.md`](netlify-dns.md) |
 | Join, freeze, drain, resize, or destroy a node | [`agent-runbook.md`](agent-runbook.md) |

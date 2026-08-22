@@ -10,6 +10,11 @@ CI deploy tokens, Oracle agent binary, or Oracle agent environment, read
 canonical dashboard is `https://control.sankalpjha.dev/`; the Vercel URL is a
 fallback alias.
 
+Both current Nomad application nodes are Linux ARM64. Before onboarding an app
+or writing its CI/CD, read `docs/arm64-application-cicd.md`. Do not change the
+Oracle architecture or add production emulation for an AMD64-only app; publish
+an ARM64 or multi-platform application image instead.
+
 ## Required Safety
 
 - Never commit agent tokens, cloud credentials, passwords, private SSH keys, or

@@ -4,6 +4,10 @@ Use this contract when handing a project to another coding agent before adding
 it to Myprod. The project agent prepares a deployable artifact; the Myprod
 operator separately registers and deploys it.
 
+The current application nodes are Linux ARM64. Before preparing an image or CI
+workflow, read [arm64-application-cicd.md](arm64-application-cicd.md). Myprod
+does not change node architecture to accommodate an AMD64-only application.
+
 ## Generic Project-Agent Contract
 
 The project agent must:

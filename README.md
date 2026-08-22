@@ -149,6 +149,8 @@ Deployment notes live in [docs/deployment.md](docs/deployment.md). Production sh
 Operator concepts and application handoffs are documented in
 [docs/operator-faq.md](docs/operator-faq.md) and
 [docs/application-onboarding.md](docs/application-onboarding.md).
+The mandatory ARM64 artifact and repository CI/CD contract is documented in
+[docs/arm64-application-cicd.md](docs/arm64-application-cicd.md).
 Authentication and safe agent activation are documented in
 [docs/operator-authentication.md](docs/operator-authentication.md). Agents and
 other LLMs must begin with [docs/llm-operator-guide.md](docs/llm-operator-guide.md)
