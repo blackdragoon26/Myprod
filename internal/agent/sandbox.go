@@ -26,15 +26,15 @@ import (
 // exactly one sandbox ID and nothing else.
 
 const (
-	sandboxNodeMemoryCeiling = 85.0
-	sandboxNodeDiskCeiling   = 85.0
-	sandboxExecMaxOutput     = 64 << 10
-	sandboxExecDefaultTimeut = 60 * time.Second
-	sandboxExecMaxTimeout    = 120 * time.Second
-	sandboxReapInterval      = 30 * time.Second
-	sandboxStartAttempts     = 30
-	sandboxCullDiskPercent   = 92.0
-	sandboxCullMemoryPercent = 96.0
+	sandboxNodeMemoryCeiling  = 85.0
+	sandboxNodeDiskCeiling    = 85.0
+	sandboxExecMaxOutput      = 64 << 10
+	sandboxExecDefaultTimeout = 60 * time.Second
+	sandboxExecMaxTimeout     = 120 * time.Second
+	sandboxReapInterval       = 30 * time.Second
+	sandboxStartAttempts      = 30
+	sandboxCullDiskPercent    = 92.0
+	sandboxCullMemoryPercent  = 96.0
 )
 
 type sandboxPolicy struct {
@@ -55,7 +55,7 @@ func defaultSandboxPolicy() sandboxPolicy {
 		DiskCeiling:    sandboxNodeDiskCeiling,
 		CullMemory:     sandboxCullMemoryPercent,
 		CullDisk:       sandboxCullDiskPercent,
-		ExecTimeout:    sandboxExecDefaultTimeut,
+		ExecTimeout:    sandboxExecDefaultTimeout,
 		ExecMaxTimeout: sandboxExecMaxTimeout,
 		ExecMaxOutput:  sandboxExecMaxOutput,
 		ReapInterval:   sandboxReapInterval,
@@ -281,7 +281,7 @@ func (s *server) extendSandbox(w http.ResponseWriter, r *http.Request, sandbox p
 	}
 	writeJSON(w, http.StatusOK, response{
 		OK: true, Sandbox: &extended,
-		Output:  fmt.Sprintf("Sandbox %s now expires at %s. The container's own timer was not changed; it stops at its original deadline unless recreated.\n", extended.ID, extended.ExpiresAt.Format(time.RFC3339)),
+		Output:  fmt.Sprintf("Sandbox %s now expires at %s. Its container still stops at the absolute %d-second lifetime ceiling measured from creation.\n", extended.ID, extended.ExpiresAt.Format(time.RFC3339), pool.SandboxMaxTTL),
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
 }

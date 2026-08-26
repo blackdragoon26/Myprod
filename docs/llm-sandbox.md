@@ -44,8 +44,8 @@ to reach anything outside its own box.
 | Disk pressure | The agent reclaims every sandbox on a node that crosses 92% root disk or 96% memory | Nomad does not hard-cap ephemeral disk, so sandboxes are culled before managed apps suffer |
 | Network | `network_mode = "none"` by default; egress mode uses a dedicated Docker bridge with inter-container communication disabled, public DNS resolvers, and a host firewall chain that drops the overlay, all RFC1918 space, and cloud metadata | A sandbox cannot reach Nomad, WireGuard peers, other apps, other sandboxes, the host, or instance metadata |
 | Identity | `identity { env = false file = false }`; no Vault, no Consul, no Nomad token, no registry credentials | Nothing inside can authenticate as the allocation |
-| Lifetime | Mandatory TTL, container-side `sleep` deadline, agent-side reaper, absolute 4-hour ceiling | A forgotten sandbox cannot hold capacity indefinitely |
-| Credential | Session token scoped to one sandbox ID, stored only as a SHA-256 digest | A sandbox token cannot read pool status, manage apps, mint deploy tokens, or touch another sandbox |
+| Lifetime | Mandatory TTL enforced by the reaper and by token authorization, plus a container-side `sleep` fail-safe at the absolute 4-hour ceiling | A forgotten sandbox cannot hold capacity indefinitely, and nothing survives the ceiling |
+| Credential | Session token scoped to one sandbox ID, stored only as a SHA-256 digest, refused past the sandbox's deadline | A sandbox token cannot read pool status, manage apps, mint deploy tokens, touch another sandbox, or outlive its own deadline |
 | Job naming | Every sandbox job is `poolctl-sbx-<id>`; stop and purge paths refuse any other name, and app names may not use that prefix | The sandbox surface cannot stop a managed application |
 
 ## Profiles
@@ -94,18 +94,31 @@ the control plane.
    ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@<worker-ip> '~/sandbox/sandbox-isolation.sh --verify'
    ```
 
-4. Apply it, then verify again:
+4. Apply it, then verify again. `--apply` runs its own verification pass at the
+   end, but re-run `--verify` as a separate command so the recorded state is
+   independent of the run that changed it:
 
    ```sh
    ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@<worker-ip> '~/sandbox/sandbox-isolation.sh --apply'
+   ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@<worker-ip> '~/sandbox/sandbox-isolation.sh --verify'
    ```
 
-5. Confirm the pool is unchanged:
+5. Confirm the pool is unchanged. This is an infrastructure change, so verify
+   SSH, passwordless `sudo`, WireGuard, Nomad registration, the production
+   agent health route, and both public smoke checks:
 
    ```sh
+   ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@<worker-ip> 'sudo -n true && echo passwordless-sudo-ok'
    ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@<worker-ip> 'systemctl is-active ssh nomad docker wg-quick@wg0'
+   ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@<worker-ip> 'ip -4 addr show wg0'
    curl -fsS https://api.sankalpjha.dev/__poolctl/api/health
+   curl -fsS https://control.sankalpjha.dev/api/smoke
+   curl -fsS https://api.sankalpjha.dev/ >/dev/null && echo public-ingress-ok
    ```
+
+   Confirm Nomad still lists the worker as `ready` and `eligible` using the
+   node-status command in
+   [`agent-runbook.md`](agent-runbook.md) section 9.
 
 6. Enroll the node through the operator-authenticated action endpoint:
 
@@ -171,18 +184,30 @@ is passed to Nomad as an argument vector, so quoting inside the command cannot
 escape into the agent's process. Output is capped at 64 KiB and each call has a
 timeout of 60 seconds by default and 120 seconds at most.
 
-Everything else returns `401`. The same token cannot read `/status`, register
-an app, run a node action, mint a deploy token, extend its own lifetime, list
-sandboxes, or reach another sandbox ID.
+Authorization failures return `401`: the same token cannot read `/status`,
+register an app, run a node action, mint a deploy token, extend its own
+lifetime, list sandboxes, or reach another sandbox ID. Route errors are
+distinct, and are returned only after authorization succeeds: an unknown
+sandbox path is `404`, an unsupported method on a valid path is `405`, an
+invalid request body is `400`, and acting on a sandbox that is no longer live
+is `409`.
 
 ## Budgets, Expiry, And Reclamation
 
 - Every sandbox has a TTL between 60 seconds and 4 hours; the default is 30
   minutes.
-- The container itself exits at its deadline, and the agent reaper purges
-  expired jobs on a 30-second interval.
-- **Extend** is operator-only and can never push a sandbox past 4 hours from
-  creation.
+- The TTL is enforced by the agent, in two independent places: the reaper
+  purges the job on a 30-second interval, and the session token stops
+  authorizing the moment the deadline passes, whether or not the reaper has run
+  yet.
+- The container additionally stops itself at the absolute 4-hour lifetime
+  ceiling. That timer is a fail-safe for the case where the agent is not
+  running, not the TTL itself: if the agent is down, a sandbox can outlive its
+  TTL up to that ceiling, and nothing can outlive the ceiling.
+- **Extend** is operator-only, moves the enforced deadline, and can never push
+  a sandbox past 4 hours from creation. An extended sandbox stays genuinely
+  usable, because the container is not holding the shorter TTL as its own
+  deadline.
 - Draining a node reclaims its sandboxes first, so drain behavior stays
   predictable and no budget is orphaned.
 - The agent reclaims every sandbox on a node that crosses 92% root-disk or 96%
@@ -230,14 +255,26 @@ For code changes:
 go test ./...
 ```
 
-After enabling a sandbox host, verify in this order:
+After enabling a sandbox host, verify in this order. Sandbox enablement is an
+infrastructure change, so it takes the full infrastructure verification set:
 
 ```sh
+# on the worker
 ~/sandbox/sandbox-isolation.sh --verify
+sudo -n true && echo passwordless-sudo-ok
 systemctl is-active ssh nomad docker wg-quick@wg0
+ip -4 addr show wg0
+
+# from the operator machine
 curl -fsS https://api.sankalpjha.dev/__poolctl/api/health
 curl -fsS https://control.sankalpjha.dev/api/smoke
+curl -fsS https://api.sankalpjha.dev/ >/dev/null && echo public-ingress-ok
 ```
+
+The SSH login itself is the first check; it must succeed with the operator key
+and no password. Confirm Nomad still reports the worker as `ready` and
+`eligible` with the node-status command in
+[`agent-runbook.md`](agent-runbook.md) section 9.
 
 Then create one throwaway sandbox and prove the boundary holds from inside it:
 

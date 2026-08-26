@@ -124,7 +124,8 @@ Authorization is scoped. Creating, listing, enrolling, and extending require
 full operator authentication. The session token issued with a sandbox is 256
 bits of randomness, shown once, persisted only as a SHA-256 digest, and valid
 only for status, exec, logs, and destroy on that one sandbox ID. It stops
-authorizing the moment the sandbox expires, fails, or is destroyed. Exec
+authorizing the moment the sandbox reaches its deadline, fails, or is
+destroyed. Exec
 arguments are passed to Nomad as an argument vector, never through a host
 shell, and argv is rejected when its first element looks like a CLI flag.
 
@@ -139,8 +140,12 @@ Capacity is bounded. A node must be explicitly enrolled, control-plane nodes
 are refused at every layer, and each node carries a maximum concurrent sandbox
 count and total CPU and memory budget. Creation is refused on frozen, draining,
 and reserved nodes and when live telemetry shows the node above 85% memory or
-disk use. Every sandbox has a mandatory TTL with a four-hour ceiling, enforced
-by the container's own deadline and an agent-side reaper.
+disk use. Every sandbox has a mandatory TTL with a four-hour ceiling. The TTL is
+enforced in two independent places: the reaper purges the job, and token
+authorization evaluates the deadline directly rather than trusting the stored
+status, so a credential stops working at expiry even if the reaper has not run.
+The container additionally stops itself at the absolute ceiling, which is the
+fail-safe for an agent that is not running.
 
 A container is not a virtual machine. This model constrains what a sandbox can
 reach, not what a kernel vulnerability could do. Treat anything placed in an

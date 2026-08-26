@@ -55,7 +55,8 @@ func TestRenderSandboxJobIsHardenedAndUnroutable(t *testing.T) {
 		`cap_drop        = ["ALL"]`,
 		`security_opt    = ["no-new-privileges"]`,
 		`pids_limit      = 512`,
-		`args            = ["900"]`,
+		`args            = ["14400"]`,
+		`poolctl_hard_stop_s = "14400"`,
 		"identity {",
 		"env  = false",
 	} {
@@ -380,4 +381,56 @@ func storeDir(store Store) string { return store.dir }
 func readFileString(path string) (string, error) {
 	raw, err := os.ReadFile(path)
 	return string(raw), err
+}
+
+func TestSandboxTokenStopsAuthorizingAtExpiryBeforeTheReaperRuns(t *testing.T) {
+	store := sandboxTestStore(t)
+	if _, err := store.EnrollSandboxHost(SandboxHost{Node: "oracle-worker-1"}); err != nil {
+		t.Fatal(err)
+	}
+	token, sandbox, err := store.CreateSandbox(Sandbox{Node: "oracle-worker-1", TTLSeconds: SandboxMinTTL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The record is still "running" here: nothing has reaped it yet. The
+	// deadline alone must be enough to stop the credential working.
+	stored, found, err := store.FindSandbox(sandbox.ID)
+	if err != nil || !found || stored.Status != SandboxStatusStarting {
+		t.Fatalf("sandbox = %+v (found %t, err %v)", stored, found, err)
+	}
+	authorized, err := store.authorizeSandboxTokenAt(sandbox.ID, token, sandbox.ExpiresAt.Add(-time.Second))
+	if err != nil || !authorized {
+		t.Fatalf("a live sandbox token must authorize: %t %v", authorized, err)
+	}
+	expired, err := store.authorizeSandboxTokenAt(sandbox.ID, token, sandbox.ExpiresAt.Add(time.Second))
+	if err != nil || expired {
+		t.Fatalf("an expired sandbox token must be refused even before reaping: %t %v", expired, err)
+	}
+}
+
+func TestSandboxIsolationRefusesTheControlPlaneOnAnySingleIndicator(t *testing.T) {
+	var script string
+	for _, file := range RenderSandboxIsolation() {
+		if file.Path == "sandbox/sandbox-isolation.sh" {
+			script = file.Content
+		}
+	}
+	start := strings.Index(script, "refuse_control_plane() {")
+	if start < 0 {
+		t.Fatal("isolation script has no control-plane guard")
+	}
+	guard := script[start : start+strings.Index(script[start:], "\n}")]
+	for _, indicator := range []string{"/etc/traefik/traefik.yml", "/etc/nomad.d/tls", "/var/lib/poolctl/control-plane.ready"} {
+		if !strings.Contains(guard, indicator) {
+			t.Fatalf("control-plane guard does not check %q:\n%s", indicator, guard)
+		}
+	}
+	// Every indicator must be an independent refusal, never a conjunction.
+	if strings.Count(guard, "||") != 2 || strings.Contains(guard, "&&") {
+		t.Fatalf("control-plane indicators must each refuse on their own:\n%s", guard)
+	}
+	if strings.Count(guard, "die ") != 1 {
+		t.Fatalf("control-plane guard should refuse exactly once:\n%s", guard)
+	}
 }

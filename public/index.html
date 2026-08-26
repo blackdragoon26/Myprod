@@ -2374,6 +2374,13 @@
       }
     }
 
+    function closeSandboxTokenDialog() {
+      sandboxTokenDialog.close();
+      // The plaintext session token must not stay readable in the DOM.
+      sandboxTokenSecret.value = "";
+      sandboxTokenUsage.textContent = "";
+    }
+
     function closeSandboxDialog() {
       sandboxDialog.close();
       sandboxError.textContent = "";
@@ -2742,9 +2749,9 @@
     sandboxDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeSandboxDialog(); });
     sandboxForm.addEventListener("submit", createSandbox);
     sandboxNode.addEventListener("change", syncSandboxNetworkChoice);
-    sandboxTokenClose.addEventListener("click", () => sandboxTokenDialog.close());
-    sandboxTokenDone.addEventListener("click", () => sandboxTokenDialog.close());
-    sandboxTokenDialog.addEventListener("cancel", (event) => { event.preventDefault(); sandboxTokenDialog.close(); });
+    sandboxTokenClose.addEventListener("click", closeSandboxTokenDialog);
+    sandboxTokenDone.addEventListener("click", closeSandboxTokenDialog);
+    sandboxTokenDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeSandboxTokenDialog(); });
     sandboxTokenCopy.addEventListener("click", async () => {
       if (!sandboxTokenSecret.value) return;
       try {

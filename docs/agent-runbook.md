@@ -420,7 +420,12 @@ go run ./cmd/poolctl sandbox render-isolation
 scp -i ~/.ssh/keys/openclaw-oracle.key -r work/rendered/sandbox ubuntu@140.245.228.146:~/
 ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146 '~/sandbox/sandbox-isolation.sh --verify'
 ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146 '~/sandbox/sandbox-isolation.sh --apply'
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146 '~/sandbox/sandbox-isolation.sh --verify'
 ```
+
+Then run the section 6 end-to-end verification for that worker before
+enrolling it: SSH, passwordless `sudo`, WireGuard, Nomad registration, the
+production agent health route, and both public smoke checks.
 
 Then enroll it through the operator-authenticated action endpoint with
 `sandbox-host-enroll` and a value such as `egress,max=2,cpu=1000,mem=1024`.

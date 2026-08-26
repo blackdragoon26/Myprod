@@ -96,10 +96,13 @@ require_tools() {
 refuse_control_plane() {
   # A control-plane node runs Nomad servers, Traefik, the agent, and the pool
   # TLS material. Sandboxes are never allowed to share that machine.
-  if $SUDO test -f /etc/traefik/traefik.yml || $SUDO test -d /etc/nomad.d/tls; then
-    if $SUDO test -f /var/lib/poolctl/control-plane.ready; then
-      die "this host is the Myprod control plane; sandbox partitions may only run on workers"
-    fi
+  #
+  # Any single indicator is enough to refuse. A control plane whose ready
+  # marker was never written, or was removed, must still be refused.
+  if $SUDO test -f /etc/traefik/traefik.yml ||
+     $SUDO test -d /etc/nomad.d/tls ||
+     $SUDO test -f /var/lib/poolctl/control-plane.ready; then
+    die "this host is the Myprod control plane; sandbox partitions may only run on workers"
   fi
 }
 

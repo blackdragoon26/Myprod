@@ -406,6 +406,13 @@ func (s Store) FindSandbox(id string) (Sandbox, bool, error) {
 // token of exactly this sandbox, and whether that sandbox is still live. A
 // token for another sandbox never authorizes this one.
 func (s Store) AuthorizeSandboxToken(id, plaintext string) (bool, error) {
+	return s.authorizeSandboxTokenAt(id, plaintext, time.Now().UTC())
+}
+
+// authorizeSandboxTokenAt is the clock-explicit form. Expiry is evaluated here
+// rather than trusting the stored status, so a token stops working the instant
+// its sandbox is past its deadline even if the reaper has not run yet.
+func (s Store) authorizeSandboxTokenAt(id, plaintext string, now time.Time) (bool, error) {
 	mu := s.sandboxMutex()
 	mu.Lock()
 	defer mu.Unlock()
@@ -421,7 +428,7 @@ func (s Store) AuthorizeSandboxToken(id, plaintext string) (bool, error) {
 	for _, record := range file.Sandboxes {
 		idMatches := subtle.ConstantTimeCompare([]byte(record.ID), []byte(id)) == 1
 		digestMatches := subtle.ConstantTimeCompare([]byte(record.TokenDigest), []byte(digest)) == 1
-		if idMatches && digestMatches && record.Active() {
+		if idMatches && digestMatches && record.Active() && !record.Expired(now) {
 			authorized = true
 		}
 	}

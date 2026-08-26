@@ -77,6 +77,7 @@ func RenderSandboxJob(cfg Config, sandbox Sandbox) (RenderedFile, error) {
 	fmt.Fprintf(&b, "    poolctl_profile    = %s\n", strconv.Quote(sandbox.Profile))
 	fmt.Fprintf(&b, "    poolctl_network    = %s\n", strconv.Quote(sandbox.Network))
 	fmt.Fprintf(&b, "    poolctl_expires_at = %s\n", strconv.Quote(expires.UTC().Format(time.RFC3339)))
+	fmt.Fprintf(&b, "    poolctl_hard_stop_s = %s\n", strconv.Quote(strconv.Itoa(SandboxMaxTTL)))
 	b.WriteString("  }\n\n")
 
 	// Placement is pinned to the enrolled node and to Linux ARM64, which is the
@@ -129,8 +130,14 @@ func RenderSandboxJob(cfg Config, sandbox Sandbox) (RenderedFile, error) {
 	}
 	b.WriteString("        security_opt    = [\"no-new-privileges\"]\n")
 	b.WriteString("        work_dir        = \"/workspace\"\n")
+	// The container's own deadline is the absolute lifetime ceiling, not the
+	// sandbox TTL. The TTL is enforced by the agent, which reaps at ExpiresAt
+	// and refuses the session token past it, so an extension is real rather
+	// than leaving a live record in front of a container that already exited.
+	// This sleep is the fail-safe for the case where the agent is not running:
+	// no sandbox survives it, whatever else has failed.
 	b.WriteString("        command         = \"/bin/sleep\"\n")
-	fmt.Fprintf(&b, "        args            = [%s]\n", strconv.Quote(strconv.Itoa(sandbox.TTLSeconds)))
+	fmt.Fprintf(&b, "        args            = [%s]\n", strconv.Quote(strconv.Itoa(SandboxMaxTTL)))
 	if sandbox.Network == SandboxNetworkEgress {
 		// Public resolvers only: the sandbox must not be able to query a
 		// host-local or pool-internal resolver.
