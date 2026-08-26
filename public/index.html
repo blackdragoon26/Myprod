@@ -773,6 +773,33 @@
             </div>
           </section>
 
+          <section id="sandboxes" class="span-12 card">
+            <div class="card-head">
+              <h2>Sandbox Partitions</h2>
+              <div class="actions">
+                <span id="sandbox-capability" class="pill warn">locked</span>
+                <button id="add-sandbox" type="button" disabled>New sandbox</button>
+              </div>
+            </div>
+            <p class="muted">Disposable Ubuntu ARM64 boxes for LLM and agent work. A sandbox is never routed by Traefik, never placed on the control plane, never given a host path, and is reclaimed automatically when its TTL expires.</p>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Sandbox</th><th>Node</th><th>Profile</th><th>Network</th><th>Reservation</th><th>Expires</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody id="sandboxes-body">
+                <tr><td colspan="8" class="muted">Sign in to load sandbox partitions.</td></tr>
+              </tbody>
+            </table></div>
+            <div class="inventory-section">
+              <h3>Sandbox Hosts</h3>
+              <p class="muted">Only an enrolled worker can host a sandbox, and only inside the budget recorded here. Egress requires the host isolation bundle.</p>
+              <div class="table-wrap"><table>
+                <thead><tr><th>Node</th><th>Concurrency</th><th>CPU budget</th><th>Memory budget</th><th>Egress</th></tr></thead>
+                <tbody id="sandbox-hosts-body">
+                  <tr><td colspan="5" class="muted">Sign in to load sandbox hosts.</td></tr>
+                </tbody>
+              </table></div>
+            </div>
+          </section>
+
           <section id="nodes" class="span-5 card">
             <div class="card-head">
               <h2>Nodes</h2>
@@ -959,12 +986,91 @@
     </div>
   </dialog>
 
+  <dialog id="sandbox-dialog" class="app-dialog" aria-labelledby="sandbox-dialog-title">
+    <form id="sandbox-form" class="app-form">
+      <div class="app-form-head">
+        <div>
+          <h2 id="sandbox-dialog-title">New sandbox partition</h2>
+          <p>One disposable Ubuntu ARM64 container on one enrolled worker.</p>
+        </div>
+        <button id="sandbox-close" class="icon" type="button" aria-label="Close" title="Close">&times;</button>
+      </div>
+      <div class="form-grid">
+        <div class="field">
+          <label for="sandbox-name">Name</label>
+          <input id="sandbox-name" name="name" required pattern="[A-Za-z0-9_-]+" maxlength="48" value="llm-sandbox" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="sandbox-node">Sandbox host</label>
+          <select id="sandbox-node" name="node" required></select>
+        </div>
+        <div class="field">
+          <label for="sandbox-profile">Profile</label>
+          <select id="sandbox-profile" name="profile">
+            <option value="strict">strict - read-only rootfs, no capabilities</option>
+            <option value="workspace">workspace - writable rootfs, apt only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sandbox-network">Network</label>
+          <select id="sandbox-network" name="network">
+            <option value="none">none - loopback only</option>
+            <option value="egress">egress - public internet, pool blocked</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sandbox-image">Base image</label>
+          <input id="sandbox-image" name="image" maxlength="255" value="ubuntu:24.04" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="sandbox-ttl">Lifetime (minutes)</label>
+          <input id="sandbox-ttl" name="ttl" type="number" min="1" max="240" step="1" value="30" required>
+        </div>
+        <div class="field">
+          <label for="sandbox-cpu">CPU reservation (MHz)</label>
+          <input id="sandbox-cpu" name="cpu" type="number" min="100" max="4000" step="100" value="500" required>
+        </div>
+        <div class="field">
+          <label for="sandbox-memory">Memory reservation (MB)</label>
+          <input id="sandbox-memory" name="memory" type="number" min="128" max="8192" step="128" value="512" required>
+        </div>
+      </div>
+      <div class="form-note">Only Ubuntu base images are accepted. A sandbox gets no host path, no Docker socket, no pool overlay address, and no Traefik route. Its scoped token is shown once and authorizes only that one sandbox.</div>
+      <div id="sandbox-error" class="form-error" role="alert"></div>
+      <div class="form-actions">
+        <button id="sandbox-cancel" type="button">Cancel</button>
+        <button id="sandbox-submit" class="primary" type="submit">Create sandbox</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="sandbox-token-dialog" class="token-dialog" aria-labelledby="sandbox-token-title">
+    <div class="token-shell">
+      <div class="app-form-head">
+        <div>
+          <h2 id="sandbox-token-title">Sandbox session token</h2>
+          <p>Scoped to one sandbox. It cannot read pool status, manage apps, or reach another sandbox.</p>
+        </div>
+        <button id="sandbox-token-close" class="icon" type="button" aria-label="Close sandbox token" title="Close">&times;</button>
+      </div>
+      <div class="form-note">Copy this token now. Myprod stores only its digest and cannot show it again. It stops working when the sandbox expires or is destroyed.</div>
+      <div class="token-issued">
+        <div class="token-secret-row">
+          <input id="sandbox-token-secret" type="text" readonly autocomplete="off" aria-label="Sandbox session token">
+          <button id="sandbox-token-copy" type="button">Copy token</button>
+        </div>
+      </div>
+      <pre id="sandbox-token-usage" class="token-message"></pre>
+      <div class="form-actions"><button id="sandbox-token-done" type="button">Done</button></div>
+    </div>
+  </dialog>
+
   <dialog id="faq-dialog" class="faq-dialog" aria-labelledby="faq-title">
     <div class="faq-shell">
       <div class="faq-head">
         <div>
           <h2 id="faq-title">Myprod operator FAQ</h2>
-          <p>How applications, nodes, reservations, telemetry, and locked access work.</p>
+          <p>How applications, nodes, reservations, sandboxes, telemetry, and locked access work.</p>
         </div>
         <button id="faq-close" class="icon" type="button" aria-label="Close FAQ" title="Close">&times;</button>
       </div>
@@ -992,6 +1098,14 @@
         <details>
           <summary>What does Resource Utilization show?</summary>
           <div class="faq-answer"><p>The combined Oracle circle summarizes live CPU, memory, and root-disk utilization across reporting Oracle nodes. Click it to split the view into one circle per node. Each node then lists its managed backends and their Nomad CPU and memory reservations; those reservation values are scheduler capacity promised to an app, not its current process usage.</p></div>
+        </details>
+        <details>
+          <summary>What is a sandbox partition?</summary>
+          <div class="faq-answer"><p>A sandbox partition is a disposable Ubuntu ARM64 container for LLM or agent work. It is not a managed app and not a machine reservation: it has no domain, no Traefik route, no host path, no Docker socket, and no pool overlay address. It runs only on a worker an operator enrolled, inside that worker's sandbox budget, at a Nomad priority below every managed app, and it is reclaimed automatically at its TTL. Its session token authorizes exec, logs, status, and destroy for that one sandbox and nothing else.</p></div>
+        </details>
+        <details>
+          <summary>What can a sandbox reach on the network?</summary>
+          <div class="faq-answer"><p>Nothing, by default: <code>none</code> gives the container loopback only. <code>egress</code> is opt-in per node and requires the host isolation bundle, which drops the WireGuard overlay, all private address space, cloud instance metadata, and scheduler ports. A sandbox can never accept inbound traffic and can never reach Nomad, another sandbox, another application, or the host itself.</p></div>
         </details>
         <details>
           <summary>What can node actions change?</summary>
@@ -1106,6 +1220,24 @@
     const tokenCopy = document.getElementById("token-copy");
     const tokenMessage = document.getElementById("token-message");
     const reservationsBody = document.getElementById("reservations-body");
+    const sandboxesBody = document.getElementById("sandboxes-body");
+    const sandboxHostsBody = document.getElementById("sandbox-hosts-body");
+    const addSandbox = document.getElementById("add-sandbox");
+    const sandboxCapability = document.getElementById("sandbox-capability");
+    const sandboxDialog = document.getElementById("sandbox-dialog");
+    const sandboxForm = document.getElementById("sandbox-form");
+    const sandboxClose = document.getElementById("sandbox-close");
+    const sandboxCancel = document.getElementById("sandbox-cancel");
+    const sandboxSubmit = document.getElementById("sandbox-submit");
+    const sandboxNode = document.getElementById("sandbox-node");
+    const sandboxNetwork = document.getElementById("sandbox-network");
+    const sandboxError = document.getElementById("sandbox-error");
+    const sandboxTokenDialog = document.getElementById("sandbox-token-dialog");
+    const sandboxTokenClose = document.getElementById("sandbox-token-close");
+    const sandboxTokenDone = document.getElementById("sandbox-token-done");
+    const sandboxTokenSecret = document.getElementById("sandbox-token-secret");
+    const sandboxTokenCopy = document.getElementById("sandbox-token-copy");
+    const sandboxTokenUsage = document.getElementById("sandbox-token-usage");
     const resourceGrid = document.getElementById("resource-grid");
     const resourceMode = document.getElementById("resource-mode");
     const nodeList = document.getElementById("node-list");
@@ -1139,6 +1271,8 @@
     let latestDNS = {};
     let latestCapabilities = {};
     let latestResources = [];
+    let latestSandboxes = [];
+    let latestSandboxHosts = [];
     let resourceChartExpanded = false;
     let latencyHistory = [];
     let editingAppName = "";
@@ -1642,6 +1776,10 @@
       resourceMode.className = "pill plain muted";
       nodeList.innerHTML = `<div class="empty">Sign in to load live nodes.</div>`;
       nodeActions.innerHTML = `<div class="empty">Sign in to load node controls.</div>`;
+      sandboxesBody.innerHTML = `<tr><td colspan="8" class="muted">Sign in to load sandbox partitions.</td></tr>`;
+      sandboxHostsBody.innerHTML = `<tr><td colspan="5" class="muted">Sign in to load sandbox hosts.</td></tr>`;
+      sandboxCapability.textContent = "locked";
+      sandboxCapability.className = "pill warn";
     }
 
     function setUnlocked(unlocked) {
@@ -1651,6 +1789,7 @@
       });
       syncAuthControls();
       addApp.disabled = !unlocked || actionRunning;
+      addSandbox.disabled = !unlocked || actionRunning || !latestCapabilities.sandboxPartitionsV1;
       agentState.textContent = unlocked ? "agent connected" : "agent locked";
       agentState.className = `pill ${unlocked ? "ok" : "warn"}`;
       for (const id of ["deploy-capability", "node-capability", "status-capability"]) {
@@ -1661,6 +1800,14 @@
       resourceMode.textContent = unlocked ? "Live Nomad client stats" : "Agent locked";
       resourceMode.className = `pill ${unlocked ? "ok" : "plain muted"}`;
       if (!unlocked) {
+        // Sandboxes are deliberately absent from the cached snapshot: a
+        // locked browser must not imply anything about live sandbox state.
+        latestSandboxes = [];
+        latestSandboxHosts = [];
+        sandboxesBody.innerHTML = `<tr><td colspan="8" class="muted">Sign in to load sandbox partitions. Sandbox state is never cached.</td></tr>`;
+        sandboxHostsBody.innerHTML = `<tr><td colspan="5" class="muted">Sign in to load sandbox hosts.</td></tr>`;
+        sandboxCapability.textContent = "locked";
+        sandboxCapability.className = "pill warn";
         const snapshot = loadSnapshot();
         if (snapshot) {
           renderAgent(snapshot.data, { cached: true });
@@ -1875,6 +2022,7 @@
         setUnlocked(true);
         setAuthResult("Connected", "ok");
         renderAgent(data);
+        await loadSandboxes();
         if (!options.silent) {
           output.textContent = JSON.stringify(data, null, 2);
         } else if (output.textContent.startsWith("Sign in with")) {
@@ -1906,11 +2054,12 @@
     function setActionBusy(active, button) {
       actionRunning = active;
       output.setAttribute("aria-busy", String(active));
-      document.querySelectorAll("[data-action], [data-edit-app], [data-image-update], [data-deploy-tokens], [data-token-revoke]").forEach((candidate) => {
+      document.querySelectorAll("[data-action], [data-edit-app], [data-image-update], [data-deploy-tokens], [data-token-revoke], [data-sandbox-action]").forEach((candidate) => {
         candidate.disabled = active || !agentConnected || candidate.dataset.requiresDns === "true";
         if (!active) setButtonLoading(candidate, false);
       });
       addApp.disabled = active || !agentConnected;
+      addSandbox.disabled = active || !agentConnected || !latestCapabilities.sandboxPartitionsV1;
       if (active) setButtonLoading(button, true);
     }
 
@@ -1970,6 +2119,18 @@
           warning: "Are you sure? No other Myprod project can use this node until the reservation is released.",
           label: "Reserve",
           project: true
+        },
+        "sandbox-destroy": {
+          title: `Destroy sandbox ${name}?`,
+          body: "Nomad stops and purges this sandbox job. Its scoped token stops working immediately and its filesystem is discarded.",
+          warning: "Are you sure? Anything not copied out of the sandbox is lost. No managed app or node state is touched.",
+          label: "Destroy sandbox"
+        },
+        "sandbox-create": {
+          title: `Create sandbox ${name}?`,
+          body: "Myprod launches an isolated Ubuntu ARM64 container inside this worker's sandbox budget and returns a one-time scoped token.",
+          warning: "Are you sure? The sandbox consumes reserved worker capacity until it expires or is destroyed.",
+          label: "Create sandbox"
         },
         "node-release": {
           title: `Release ${name}?`,
@@ -2145,6 +2306,201 @@
       tokenMessage.textContent = "Token copied. Store it as a masked CI repository secret now.";
     }
 
+    function sandboxRemaining(value) {
+      if (!value) return "unknown";
+      const at = new Date(value);
+      if (Number.isNaN(at.getTime())) return "unknown";
+      const remaining = at.getTime() - Date.now();
+      if (remaining <= 0) return "expired";
+      const minutes = Math.round(remaining / 60000);
+      if (minutes < 60) return `${minutes}m left`;
+      return `${Math.floor(minutes / 60)}h ${minutes % 60}m left`;
+    }
+
+    function renderSandboxHosts(hosts) {
+      sandboxHostsBody.innerHTML = hosts.map((host) => `<tr>
+        <td><strong>${escapeHTML(host.node)}</strong></td>
+        <td>${escapeHTML(host.maxSandboxes)} concurrent</td>
+        <td>${escapeHTML(host.maxCpu)} MHz</td>
+        <td>${escapeHTML(host.maxMemoryMb)} MB</td>
+        <td>${host.egressAllowed ? statePill("egress") : statePill("isolated")}</td>
+      </tr>`).join("") || `<tr><td colspan="5" class="muted">No worker is enrolled as a sandbox host. Run the isolation bundle, then enroll the node.</td></tr>`;
+    }
+
+    function renderSandboxes(sandboxes) {
+      const active = sandboxes.filter((sandbox) => sandbox.status === "starting" || sandbox.status === "running");
+      const recent = sandboxes.filter((sandbox) => !active.includes(sandbox)).slice(0, 5);
+      sandboxesBody.innerHTML = [...active, ...recent].map((sandbox) => {
+        const live = sandbox.status === "starting" || sandbox.status === "running";
+        return `<tr>
+          <td><strong>${escapeHTML(sandbox.name || "sandbox")}</strong><div class="muted mono">${escapeHTML(sandbox.id)}</div></td>
+          <td>${escapeHTML(sandbox.node)}</td>
+          <td>${escapeHTML(sandbox.profile)}</td>
+          <td>${statePill(sandbox.network === "egress" ? "egress" : "isolated")}</td>
+          <td>${escapeHTML(sandbox.cpu)} MHz &middot; ${escapeHTML(sandbox.memoryMb)} MB</td>
+          <td title="${escapeHTML(sandbox.expiresAt || "")}">${escapeHTML(live ? sandboxRemaining(sandbox.expiresAt) : "-")}</td>
+          <td>${statePill(sandbox.status)}</td>
+          <td><div class="actions">
+            ${live ? `<button data-sandbox-action="exec" data-sandbox-id="${escapeHTML(sandbox.id)}">Run</button>` : ""}
+            ${live ? `<button data-sandbox-action="logs" data-sandbox-id="${escapeHTML(sandbox.id)}">Logs</button>` : ""}
+            ${live ? `<button data-sandbox-action="extend" data-sandbox-id="${escapeHTML(sandbox.id)}">Extend</button>` : ""}
+            ${live ? `<button class="danger" data-sandbox-action="destroy" data-sandbox-id="${escapeHTML(sandbox.id)}">Destroy</button>` : ""}
+          </div></td>
+        </tr>`;
+      }).join("") || `<tr><td colspan="8" class="muted">No sandbox partitions. Managed apps and node state are unaffected by this section.</td></tr>`;
+      bindActionButtons();
+    }
+
+    async function loadSandboxes() {
+      if (!latestCapabilities.sandboxPartitionsV1) {
+        sandboxCapability.textContent = "agent upgrade required";
+        sandboxCapability.className = "pill warn";
+        sandboxesBody.innerHTML = `<tr><td colspan="8" class="muted">The connected Oracle agent does not expose sandbox partitions yet.</td></tr>`;
+        sandboxHostsBody.innerHTML = `<tr><td colspan="5" class="muted">Unavailable until the agent is upgraded.</td></tr>`;
+        addSandbox.disabled = true;
+        return;
+      }
+      sandboxCapability.textContent = "agent enabled";
+      sandboxCapability.className = "pill ok";
+      try {
+        const data = await agentFetch("/sandboxes");
+        latestSandboxes = data.sandboxes || [];
+        latestSandboxHosts = data.sandboxHosts || [];
+        renderSandboxes(latestSandboxes);
+        renderSandboxHosts(latestSandboxHosts);
+        addSandbox.disabled = !agentConnected || actionRunning || latestSandboxHosts.length === 0;
+      } catch (error) {
+        sandboxesBody.innerHTML = `<tr><td colspan="8" class="muted">Sandbox partitions unavailable: ${escapeHTML(error.message)}</td></tr>`;
+      }
+    }
+
+    function closeSandboxTokenDialog() {
+      sandboxTokenDialog.close();
+      // The plaintext session token must not stay readable in the DOM.
+      sandboxTokenSecret.value = "";
+      sandboxTokenUsage.textContent = "";
+    }
+
+    function closeSandboxDialog() {
+      sandboxDialog.close();
+      sandboxError.textContent = "";
+      sandboxForm.reset();
+    }
+
+    function openSandboxDialog() {
+      if (!latestSandboxHosts.length) {
+        output.textContent = "No worker is enrolled as a sandbox host yet.\n\nInstall the isolation bundle on the worker, then enroll it:\n  poolctl sandbox render-isolation\n  scp -r work/rendered/sandbox <worker>:~/\n  ./sandbox-isolation.sh --apply\n\nThen enroll the node through the agent action sandbox-host-enroll.";
+        return;
+      }
+      sandboxNode.innerHTML = latestSandboxHosts.map((host) => `<option value="${escapeHTML(host.node)}" data-egress="${host.egressAllowed ? "true" : "false"}">${escapeHTML(host.node)} &middot; ${escapeHTML(host.maxSandboxes)} max &middot; ${host.egressAllowed ? "egress" : "isolated"}</option>`).join("");
+      sandboxError.textContent = "";
+      syncSandboxNetworkChoice();
+      sandboxDialog.showModal();
+      document.getElementById("sandbox-name").focus();
+    }
+
+    function syncSandboxNetworkChoice() {
+      const selected = sandboxNode.selectedOptions[0];
+      const egressAllowed = selected?.dataset.egress === "true";
+      const egressOption = sandboxNetwork.querySelector('option[value="egress"]');
+      if (egressOption) {
+        egressOption.disabled = !egressAllowed;
+        egressOption.textContent = egressAllowed
+          ? "egress - public internet, pool blocked"
+          : "egress - unavailable until the host isolation bundle is installed";
+      }
+      if (!egressAllowed) sandboxNetwork.value = "none";
+    }
+
+    async function createSandbox(event) {
+      event.preventDefault();
+      if (!sandboxForm.reportValidity()) return;
+      const request = {
+        name: document.getElementById("sandbox-name").value.trim(),
+        node: sandboxNode.value,
+        image: document.getElementById("sandbox-image").value.trim(),
+        profile: document.getElementById("sandbox-profile").value,
+        network: sandboxNetwork.value,
+        cpu: Number(document.getElementById("sandbox-cpu").value),
+        memoryMb: Number(document.getElementById("sandbox-memory").value),
+        ttlSeconds: Number(document.getElementById("sandbox-ttl").value) * 60
+      };
+      const confirmed = await confirmPowerfulAction("sandbox-create", `${request.name} on ${request.node}`);
+      if (confirmed === null) return;
+      sandboxError.textContent = "";
+      sandboxSubmit.disabled = true;
+      setButtonLoading(sandboxSubmit, true);
+      setActionBusy(true);
+      output.textContent = `Creating sandbox ${request.name} on ${request.node}...`;
+      try {
+        const data = await agentFetch("/sandboxes", { method: "POST", body: JSON.stringify(request) });
+        const issued = data.issuedSandbox;
+        closeSandboxDialog();
+        output.textContent = `${(data.output || "Sandbox created.").trim()}`;
+        if (issued?.token) {
+          sandboxTokenSecret.value = issued.token;
+          sandboxTokenUsage.textContent = issued.usage || "";
+          sandboxTokenDialog.showModal();
+          sandboxTokenSecret.focus();
+          sandboxTokenSecret.select();
+        }
+        await refreshAgent({ silent: true });
+      } catch (error) {
+        sandboxError.textContent = error.message;
+        output.textContent = `Sandbox creation failed: ${error.message}${error.output ? `\n\n${error.output}` : ""}`;
+      } finally {
+        setActionBusy(false);
+        sandboxSubmit.disabled = false;
+        setButtonLoading(sandboxSubmit, false);
+      }
+    }
+
+    async function runSandboxAction(button) {
+      const action = button.dataset.sandboxAction;
+      const id = button.dataset.sandboxId;
+      const sandbox = latestSandboxes.find((candidate) => candidate.id === id) || { id, name: id };
+      const base = `/sandboxes/${encodeURIComponent(id)}`;
+      let request = { method: "GET" };
+      let path = base;
+      if (action === "destroy") {
+        const confirmed = await confirmPowerfulAction("sandbox-destroy", `${sandbox.name || id} (${id})`);
+        if (confirmed === null) return;
+        request = { method: "DELETE" };
+      } else if (action === "logs") {
+        path = `${base}/logs`;
+      } else if (action === "exec") {
+        const command = window.prompt(`Command to run inside sandbox ${id}`, "uname -m && cat /etc/os-release");
+        if (command === null || command.trim() === "") return;
+        path = `${base}/exec`;
+        request = { method: "POST", body: JSON.stringify({ command: command.trim() }) };
+      } else if (action === "extend") {
+        const minutes = window.prompt(`Extend sandbox ${id} by how many minutes?`, "15");
+        if (minutes === null) return;
+        const seconds = Number(minutes) * 60;
+        if (!Number.isFinite(seconds) || seconds < 60) {
+          output.textContent = "Extension must be at least one minute.";
+          return;
+        }
+        path = `${base}/extend`;
+        request = { method: "POST", body: JSON.stringify({ seconds }) };
+      }
+      setActionBusy(true, button);
+      output.textContent = `Sandbox ${action} on ${id}...`;
+      try {
+        const data = await agentFetch(path, request);
+        if (action === "exec" && data.exec) {
+          output.textContent = `Sandbox ${id} exit ${data.exec.exitCode} in ${data.exec.durationMs} ms${data.exec.timedOut ? " (timed out)" : ""}\n\n${data.exec.output || "(no output)"}`;
+        } else {
+          output.textContent = `${(data.output || "Done.").trim()}`;
+        }
+        await refreshAgent({ silent: true });
+      } catch (error) {
+        output.textContent = `Sandbox ${action} failed: ${error.message}${error.output ? `\n\n${error.output}` : ""}`;
+      } finally {
+        setActionBusy(false);
+      }
+    }
+
     function bindActionButtons() {
       const unlocked = agentConnected;
       document.querySelectorAll("[data-action]").forEach((button) => {
@@ -2170,6 +2526,12 @@
         button.dataset.bound = "true";
         button.disabled = !unlocked || actionRunning;
         button.addEventListener("click", () => openDeployTokenDialog(button.dataset.deployTokens));
+      });
+      document.querySelectorAll("[data-sandbox-action]").forEach((button) => {
+        button.disabled = !unlocked || actionRunning;
+        if (button.dataset.bound === "true") return;
+        button.dataset.bound = "true";
+        button.addEventListener("click", () => runSandboxAction(button));
       });
     }
 
@@ -2381,6 +2743,25 @@
     appCancel.addEventListener("click", closeAppDialog);
     appDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeAppDialog(); });
     appForm.addEventListener("submit", registerApplication);
+    addSandbox.addEventListener("click", openSandboxDialog);
+    sandboxClose.addEventListener("click", closeSandboxDialog);
+    sandboxCancel.addEventListener("click", closeSandboxDialog);
+    sandboxDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeSandboxDialog(); });
+    sandboxForm.addEventListener("submit", createSandbox);
+    sandboxNode.addEventListener("change", syncSandboxNetworkChoice);
+    sandboxTokenClose.addEventListener("click", closeSandboxTokenDialog);
+    sandboxTokenDone.addEventListener("click", closeSandboxTokenDialog);
+    sandboxTokenDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeSandboxTokenDialog(); });
+    sandboxTokenCopy.addEventListener("click", async () => {
+      if (!sandboxTokenSecret.value) return;
+      try {
+        await navigator.clipboard.writeText(sandboxTokenSecret.value);
+      } catch (_) {
+        sandboxTokenSecret.focus();
+        sandboxTokenSecret.select();
+        document.execCommand("copy");
+      }
+    });
     tokenClose.addEventListener("click", closeDeployTokenDialog);
     tokenDone.addEventListener("click", closeDeployTokenDialog);
     tokenDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeDeployTokenDialog(); });

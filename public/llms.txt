@@ -6,6 +6,7 @@ Source repository: https://github.com/blackdragoon26/Myprod
 LLM operator entry point: https://github.com/blackdragoon26/Myprod/blob/main/docs/llm-operator-guide.md
 ARM64 application and CI/CD contract: https://github.com/blackdragoon26/Myprod/blob/main/docs/arm64-application-cicd.md
 Application onboarding contract: https://github.com/blackdragoon26/Myprod/blob/main/docs/application-onboarding.md
+LLM sandbox partition contract: https://github.com/blackdragoon26/Myprod/blob/main/docs/llm-sandbox.md
 
 Myprod is a Vercel-hosted dashboard controlling a Nomad pool on Oracle Linux
 ARM64. Both current application nodes, oracle-main and oracle-worker-1, are
@@ -26,7 +27,16 @@ dashboard-wide recovery token in an application repository. Runtime secrets
 remain operator-installed on the exact target node and never transit the
 dashboard.
 
+Myprod can provision sandbox partitions: disposable Ubuntu ARM64 containers for
+LLM and agent work. A sandbox is not a managed app and not a machine
+reservation. It never runs on the control plane, never receives a domain,
+Traefik route, host path, Docker socket, or pool overlay address, is capped by
+a per-worker budget and a mandatory TTL, and defaults to loopback-only
+networking. Its session token authorizes exec, logs, status, and destroy for
+exactly one sandbox and nothing else. Do not weaken that confinement or reuse
+an operator token in its place.
+
 Agents must read the linked repository documents before proposing or changing
-an app, CI workflow, Myprod control surface, or Oracle infrastructure. Never
-infer permission to mutate production infrastructure from public website
-access.
+an app, CI workflow, sandbox partition, Myprod control surface, or Oracle
+infrastructure. Never infer permission to mutate production infrastructure from
+public website access.

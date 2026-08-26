@@ -400,7 +400,49 @@ The reserved node must show `ineligible`. Oracle's `/opt/poolctl/.poolctl/state.
 
 **Release** clears project ownership but intentionally keeps the node ineligible. Inspect and clean the worker first, then use the separately confirmed **Unfreeze** action to return it to the shared scheduler.
 
-## 10. Action Semantics
+## 10. Provision A Sandbox Partition
+
+Use a sandbox when an LLM or automation agent needs a real Ubuntu ARM64 shell
+for building, testing, or reproduction, and does not need a whole machine. Read
+[llm-sandbox.md](llm-sandbox.md) first; it is the full contract.
+
+Preflight requirements:
+
+- the target must be a worker, never the control plane;
+- the worker must be joined, eligible, not draining, and not reserved;
+- the worker must be enrolled as a sandbox host, within an explicit budget;
+- public egress additionally requires the host isolation bundle.
+
+Enable a host once:
+
+```sh
+go run ./cmd/poolctl sandbox render-isolation
+scp -i ~/.ssh/keys/openclaw-oracle.key -r work/rendered/sandbox ubuntu@140.245.228.146:~/
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146 '~/sandbox/sandbox-isolation.sh --verify'
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146 '~/sandbox/sandbox-isolation.sh --apply'
+ssh -i ~/.ssh/keys/openclaw-oracle.key ubuntu@140.245.228.146 '~/sandbox/sandbox-isolation.sh --verify'
+```
+
+Then run the section 6 end-to-end verification for that worker before
+enrolling it: SSH, passwordless `sudo`, WireGuard, Nomad registration, the
+production agent health route, and both public smoke checks.
+
+Then enroll it through the operator-authenticated action endpoint with
+`sandbox-host-enroll` and a value such as `egress,max=2,cpu=1000,mem=1024`.
+Omit `egress` for loopback-only sandboxes. `sandbox-host-remove` withdraws the
+enrollment and is refused while a sandbox is still live.
+
+Create and use sandboxes from the hosted dashboard under **Sandbox
+Partitions**, or through `POST /__poolctl/api/sandboxes`. The scoped session
+token is displayed once; it authorizes only status, exec, logs, and destroy on
+that one sandbox.
+
+Destroy sandboxes when the work is done rather than waiting for the TTL, and
+confirm afterwards that every managed application is still healthy. Never
+weaken sandbox confinement, enroll the control plane, or grant egress on a node
+whose isolation bundle has not been verified.
+
+## 11. Action Semantics
 
 - **Control status** reads real systemd service state.
 - **Deploy** runs a real Nomad job submission and status verification.
@@ -410,6 +452,10 @@ The reserved node must show `ineligible`. Oracle's `/opt/poolctl/.poolctl/state.
 - **Cancel drain** stops the drain but keeps the node ineligible.
 - **Reserve** requires an empty worker and records exclusive project ownership.
 - **Release** clears ownership but does not silently make the node schedulable.
+- **sandbox-host-enroll** records a worker's sandbox budget and egress policy; it never changes Nomad state.
+- **sandbox-host-remove** withdraws that enrollment and is refused while a sandbox is live.
+- **New sandbox** submits a real, hardened Nomad batch job and returns a one-time scoped token.
+- **Destroy sandbox** purges only jobs named `poolctl-sbx-*`; it can never stop a managed application.
 
 Do not infer success from the dashboard label alone. Read command output and verify Nomad after powerful operations.
 

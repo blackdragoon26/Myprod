@@ -34,6 +34,8 @@ type server struct {
 	operatorAuth bearerAuthenticator
 	runNomad     func(context.Context, ...string) (string, error)
 	dns          dnsManager
+	sandbox      sandboxPolicy
+	now          func() time.Time
 	deployMu     sync.Mutex
 }
 
@@ -78,13 +80,21 @@ type response struct {
 	Capabilities agentCapabilities          `json:"capabilities,omitempty"`
 	DeployTokens []pool.DeployTokenMetadata `json:"deployTokens,omitempty"`
 	IssuedToken  *issuedDeployToken         `json:"issuedToken,omitempty"`
-	Updated      string                     `json:"updated,omitempty"`
+
+	Sandboxes     []pool.Sandbox     `json:"sandboxes,omitempty"`
+	Sandbox       *pool.Sandbox      `json:"sandbox,omitempty"`
+	SandboxHosts  []pool.SandboxHost `json:"sandboxHosts,omitempty"`
+	IssuedSandbox *issuedSandbox     `json:"issuedSandbox,omitempty"`
+	Exec          *sandboxExecResult `json:"exec,omitempty"`
+
+	Updated string `json:"updated,omitempty"`
 }
 
 type agentCapabilities struct {
 	ManagedAppLifecycleV2 bool `json:"managedAppLifecycleV2"`
 	AppDeployTokensV1     bool `json:"appDeployTokensV1"`
 	ClerkOperatorAuthV1   bool `json:"clerkOperatorAuthV1"`
+	SandboxPartitionsV1   bool `json:"sandboxPartitionsV1"`
 }
 
 type issuedDeployToken struct {
@@ -202,8 +212,14 @@ func Serve(args []string) error {
 	}
 	s := &server{
 		addr: addr, store: store, token: token, operatorAuth: clerkAuth,
-		runNomad: runNomad, dns: newNetlifyDNSFromEnv(),
+		runNomad: runNomad, dns: newNetlifyDNSFromEnv(), sandbox: defaultSandboxPolicy(),
 	}
+
+	// Expired sandboxes are reclaimed in the background so a forgotten box can
+	// never hold worker capacity indefinitely.
+	reaperCtx, stopReaper := context.WithCancel(context.Background())
+	defer stopReaper()
+	go s.runSandboxReaper(reaperCtx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
@@ -213,6 +229,8 @@ func Serve(args []string) error {
 	mux.HandleFunc("/__poolctl/api/apps/", s.handleApp)
 	mux.HandleFunc("/__poolctl/api/deploy/p4lens", s.handleP4LensDeploy)
 	mux.HandleFunc("/__poolctl/api/deploy/cutable", s.handleCutableDeploy)
+	mux.HandleFunc("/__poolctl/api/sandboxes", s.handleSandboxes)
+	mux.HandleFunc("/__poolctl/api/sandboxes/", s.handleSandbox)
 	mux.HandleFunc("/__poolctl/api/smoke", s.handleSmoke)
 
 	fmt.Printf("poolctl agent listening on http://%s\n", addr)
@@ -406,6 +424,7 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 			ManagedAppLifecycleV2: true,
 			AppDeployTokensV1:     true,
 			ClerkOperatorAuthV1:   s.operatorAuth != nil,
+			SandboxPartitionsV1:   true,
 		},
 		Updated: time.Now().UTC().Format(time.RFC3339),
 	})
@@ -763,6 +782,8 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 			return "", err
 		}
 		return "rendered /tmp/poolctl-agent-rendered/" + file.Path + "\n", nil
+	case "sandbox-host-enroll", "sandbox-host-remove":
+		return s.runSandboxHostAction(action, name, value)
 	case "node-freeze", "node-unfreeze", "node-drain", "node-cancel-drain", "node-reserve", "node-release":
 		if name == "" {
 			return "", errors.New("missing node name")
@@ -804,9 +825,16 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 			if current := state.Nodes[name]; current.ReservedFor != "" {
 				return "", fmt.Errorf("node is reserved for %q; release the reservation before draining", current.ReservedFor)
 			}
-			output, err = s.nomad(ctx, "node", "drain", "-enable", "-detach", "-yes", "-m", "poolctl web drain", liveNode.ID)
-			if err != nil {
-				return output, err
+			// Sandboxes are disposable by contract. Reclaiming them before the
+			// drain keeps their budget accounting truthful and stops a drain
+			// from leaving orphaned sandbox records behind.
+			if reclaimed := s.reclaimNodeSandboxes(ctx, name); reclaimed != "" {
+				output += reclaimed
+			}
+			drainOut, drainErr := s.nomad(ctx, "node", "drain", "-enable", "-detach", "-yes", "-m", "poolctl web drain", liveNode.ID)
+			output += drainOut
+			if drainErr != nil {
+				return output, drainErr
 			}
 			state.SetDraining(name, true)
 		case "node-cancel-drain":

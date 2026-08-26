@@ -58,6 +58,9 @@ go run ./cmd/poolctl app status sample-api
 go run ./cmd/poolctl app render sample-api
 go run ./cmd/poolctl app deploy sample-api
 go run ./cmd/poolctl guard check
+go run ./cmd/poolctl sandbox list
+go run ./cmd/poolctl sandbox render oracle-worker-1
+go run ./cmd/poolctl sandbox render-isolation
 go run ./cmd/poolctl web
 ```
 
@@ -140,6 +143,17 @@ Operators can rotate or revoke these app-scoped tokens live without restarting
 the agent. This credential surface is intentionally separate from application
 runtime secrets, which remain SSH-installed on the target node.
 
+**Sandbox Partitions** provisions a disposable Ubuntu ARM64 container that an
+LLM or automation agent can drive through a scoped session token. A sandbox is
+never routed by Traefik, never placed on the control plane, never given a host
+path or the Docker socket, and is reclaimed automatically at its TTL. It runs
+only on a worker an operator explicitly enrolled, only inside that worker's
+sandbox budget, and only at a Nomad priority below every managed app. Network
+access defaults to loopback-only; public egress requires the reversible host
+isolation bundle, which blocks the WireGuard overlay, all private address
+space, and cloud instance metadata. The full contract is in
+[docs/llm-sandbox.md](docs/llm-sandbox.md).
+
 Reserved projects appear under **Project Reservations** beside the managed app inventory. They are shown separately because a reserved machine is infrastructure capacity, not evidence that an application has been deployed.
 
 Powerful controls require an action-specific confirmation in both hosted and local dashboards. A confirmation reduces operator mistakes; the Oracle agent token and Nomad ACLs remain the actual authorization boundary.
@@ -157,6 +171,8 @@ other LLMs must begin with [docs/llm-operator-guide.md](docs/llm-operator-guide.
 before changing production state.
 Netlify credential setup and DNS lifecycle behavior are documented in
 [docs/netlify-dns.md](docs/netlify-dns.md).
+LLM sandbox partitions, their isolation model, and the host enrollment flow are
+documented in [docs/llm-sandbox.md](docs/llm-sandbox.md).
 
 Before any agent adds another worker, follow
 [docs/agent-runbook.md](docs/agent-runbook.md). The provider-specific selection
@@ -227,3 +243,4 @@ Running `work/rendered/bootstrap-control-plane.sh` on Oracle will mutate the ser
 - A frozen node is made ineligible in Nomad; existing allocations continue running.
 - Draining a node invokes Nomad drain and can migrate or stop allocations.
 - Project reservations are worker-only, require no active allocations, and preserve exclusive ownership in the Oracle agent state.
+- Sandbox partitions are worker-only, budgeted per node, unprivileged, unroutable, TTL-bound, and cannot stop or modify a managed application.

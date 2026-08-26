@@ -3,7 +3,9 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/blackdragoon26/Myprod/internal/agent"
 	"github.com/blackdragoon26/Myprod/internal/pool"
@@ -29,6 +31,9 @@ Usage:
   poolctl app deploy <app>
   poolctl app status <app>
   poolctl guard check
+  poolctl sandbox list
+  poolctl sandbox render <node> [--profile strict|workspace] [--network none|egress] [--ttl seconds]
+  poolctl sandbox render-isolation
   poolctl web
   poolctl agent
 
@@ -60,6 +65,8 @@ func Run(args []string) error {
 		return app(store, args[1:])
 	case "guard":
 		return guard(store, args[1:])
+	case "sandbox":
+		return sandbox(store, args[1:])
 	case "web":
 		return web.Serve(".poolctl", args[1:])
 	case "agent":
@@ -313,6 +320,93 @@ func deployApp(store pool.Store, appName string) error {
 	}
 	state.SetApp(app.Name, placement, "deployed")
 	return store.SaveState(state)
+}
+
+// sandbox exposes the local, read-only side of sandbox partitions: rendering
+// the host isolation bundle, previewing the hardened job, and listing what the
+// local store knows. Creating and driving a live sandbox goes through the
+// Oracle agent so that operator authentication and node budgets always apply.
+func sandbox(store pool.Store, args []string) error {
+	if len(args) == 0 {
+		return errors.New("usage: poolctl sandbox list|render <node>|render-isolation")
+	}
+
+	switch args[0] {
+	case "list":
+		sandboxes, err := store.ListSandboxes()
+		if err != nil {
+			return err
+		}
+		hosts, err := store.ListSandboxHosts()
+		if err != nil {
+			return err
+		}
+		fmt.Printf("sandbox hosts: %d\n", len(hosts))
+		for _, host := range hosts {
+			fmt.Printf("- %s max=%d cpu=%d MHz mem=%d MB egress=%t\n",
+				host.Node, host.MaxSandboxes, host.MaxCPU, host.MaxMemoryMB, host.EgressAllowed)
+		}
+		fmt.Printf("sandboxes: %d\n", len(sandboxes))
+		for _, item := range sandboxes {
+			fmt.Printf("- %s %s node=%s profile=%s network=%s status=%s expires=%s\n",
+				item.ID, item.Name, item.Node, item.Profile, item.Network, item.Status,
+				item.ExpiresAt.Format(time.RFC3339))
+		}
+		return nil
+	case "render-isolation":
+		const outDir = "work/rendered"
+		files := pool.RenderSandboxIsolation()
+		if err := pool.WriteRendered(outDir, files); err != nil {
+			return err
+		}
+		for _, file := range files {
+			fmt.Printf("rendered %s/%s\n", outDir, file.Path)
+		}
+		fmt.Println()
+		fmt.Println("copy the sandbox directory to the worker and review it before running:")
+		fmt.Println("  ./sandbox-isolation.sh --verify")
+		fmt.Println("  ./sandbox-isolation.sh --apply")
+		return nil
+	case "render":
+		if len(args) < 2 {
+			return errors.New("usage: poolctl sandbox render <node> [--profile strict|workspace] [--network none|egress] [--ttl seconds]")
+		}
+		preview := pool.Sandbox{ID: "preview", Name: "preview", Node: args[1], CreatedAt: time.Now().UTC()}
+		rest := args[2:]
+		for i := 0; i < len(rest); i++ {
+			if i+1 >= len(rest) {
+				return fmt.Errorf("missing value for %s", rest[i])
+			}
+			value := rest[i+1]
+			switch rest[i] {
+			case "--profile":
+				preview.Profile = value
+			case "--network":
+				preview.Network = value
+			case "--ttl":
+				ttl, err := strconv.Atoi(value)
+				if err != nil {
+					return fmt.Errorf("--ttl must be a number of seconds: %w", err)
+				}
+				preview.TTLSeconds = ttl
+			default:
+				return fmt.Errorf("unknown sandbox render flag %q", rest[i])
+			}
+			i++
+		}
+		cfg, _, err := store.Load()
+		if err != nil {
+			return err
+		}
+		file, err := pool.RenderSandboxJob(cfg, preview)
+		if err != nil {
+			return err
+		}
+		fmt.Print(file.Content)
+		return nil
+	default:
+		return fmt.Errorf("unknown sandbox subcommand %q", args[0])
+	}
 }
 
 func guard(store pool.Store, args []string) error {
