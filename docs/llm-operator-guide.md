@@ -32,6 +32,7 @@ credential from a screenshot.
 | DNS credentials or managed records | [`netlify-dns.md`](netlify-dns.md) |
 | Join, freeze, drain, resize, or destroy a node | [`agent-runbook.md`](agent-runbook.md) |
 | Reserve or perform host-level work on a worker | [`reserved-worker-context.md`](reserved-worker-context.md) |
+| Create, enroll, or hand out an LLM sandbox partition | [`llm-sandbox.md`](llm-sandbox.md) |
 
 ## Credential Boundaries
 
@@ -49,8 +50,14 @@ Keep these three credential classes separate:
    `/etc/poolctl/apps/<app-name>.env`. They never enter the dashboard, Clerk,
    Vercel, the agent store, or repository.
 
+4. Sandbox session tokens authorize exec, logs, status, and destroy on exactly
+   one sandbox partition. They are shown once, stored as a digest, and die with
+   their sandbox. They never authorize pool status, app management, node
+   actions, or another sandbox.
+
 The legacy `POOLCTL_AGENT_TOKEN` is a recovery credential. Do not give it to an
-application repository and do not replace app-scoped CI tokens with it.
+application repository and do not replace app-scoped CI tokens with it. Never
+hand it to sandbox work in place of a sandbox session token.
 
 ## Compatibility And Uptime Rules
 
@@ -70,6 +77,8 @@ application repository and do not replace app-scoped CI tokens with it.
   secret-shaped names. Runtime secrets stay SSH-installed.
 - Never destroy, resize, drain, release, or unfreeze infrastructure merely to
   make a deployment pass.
+- Never weaken sandbox confinement to make a sandbox task pass. Sandboxes are
+  worker-only, unprivileged, unroutable, and TTL-bound by contract.
 
 ## Minimum Verification
 

@@ -13,12 +13,13 @@ import (
 )
 
 type Store struct {
-	dir     string
-	tokenMu *sync.Mutex
+	dir       string
+	tokenMu   *sync.Mutex
+	sandboxMu *sync.Mutex
 }
 
 func NewStore(dir string) Store {
-	return Store{dir: dir, tokenMu: &sync.Mutex{}}
+	return Store{dir: dir, tokenMu: &sync.Mutex{}, sandboxMu: &sync.Mutex{}}
 }
 
 func (s Store) Init() (bool, error) {
@@ -277,6 +278,9 @@ func validateApp(cfg Config, app App, existingName string) error {
 	}
 	if !safeID(app.Name) {
 		return errors.New("app name may contain only letters, numbers, dash, and underscore")
+	}
+	if strings.HasPrefix(app.Name, SandboxJobPrefix) {
+		return fmt.Errorf("app name may not start with the reserved sandbox prefix %q", SandboxJobPrefix)
 	}
 	if _, ok := cfg.FindApp(app.Name); ok && app.Name != existingName {
 		return fmt.Errorf("app %q already exists", app.Name)

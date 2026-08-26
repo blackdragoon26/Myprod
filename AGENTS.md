@@ -30,6 +30,23 @@ an ARM64 or multi-platform application image instead.
   HTTPS in the current architecture.
 - Preserve unrelated working-tree changes.
 
+## Sandbox Partitions
+
+Before creating, enrolling, or handing out a sandbox, read
+`docs/llm-sandbox.md`. A sandbox is a disposable Ubuntu ARM64 container, not a
+machine and not a managed app.
+
+- Never create a sandbox on `oracle-main`; sandbox hosting is worker-only.
+- Never weaken the rendered job to make a task pass: no privileged mode, no
+  host bind mounts, no Docker socket, no host networking, no Traefik route, no
+  added capabilities, and no non-Ubuntu image.
+- Enroll a node for egress only after running the host isolation bundle on it
+  and verifying with `sandbox-isolation.sh --verify`.
+- Treat a sandbox session token as scoped to one sandbox. Never substitute the
+  operator token for it, and never give an operator token to sandbox work.
+- Destroy sandboxes when finished. Do not extend a sandbox to keep state alive;
+  the filesystem is ephemeral by contract.
+
 ## Reserved Project Workers
 
 Before using a reserved worker, read `docs/reserved-worker-context.md`. There

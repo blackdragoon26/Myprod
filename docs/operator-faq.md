@@ -45,6 +45,28 @@ Do not reserve a whole worker for an ordinary containerized backend. Register
 the backend as a managed application so other workloads can use the remaining
 capacity.
 
+## What Is A Sandbox Partition?
+
+A sandbox partition is a disposable Ubuntu ARM64 container that an LLM or
+automation agent can drive through a scoped session token.
+
+It is deliberately the weakest capacity shape Myprod offers:
+
+- it is not a managed app: no domain, no Traefik route, no ingress, and no
+  entry in the application configuration;
+- it is not a project reservation: it owns one container, not one machine;
+- it never runs on the control plane, and only on a worker an operator has
+  explicitly enrolled as a sandbox host;
+- it is unprivileged, has no host path or Docker socket, and gets loopback-only
+  networking unless the node was enrolled for public egress;
+- it has a mandatory TTL, is reclaimed automatically, and its filesystem is
+  discarded.
+
+Use a sandbox when an agent needs a real Ubuntu ARM64 shell to build, test, or
+reproduce something. Use a project reservation when a project genuinely needs a
+whole machine. See
+[llm-sandbox.md](llm-sandbox.md).
+
 ## What Must Be Ready Before App Registration?
 
 Verify all of the following:

@@ -97,6 +97,55 @@ resource measurements. It excludes the agent token, SSH usernames, and SSH key
 paths. Cached state never enables actions and must be labeled with its capture
 time because it is not an authorization or liveness signal.
 
+## Sandbox Partitions
+
+Sandbox partitions assume the workload inside them is untrusted, because an LLM
+or automation agent is expected to drive it.
+
+Runtime confinement is set by the agent, not by the requester. The API accepts
+a validated struct and renders the job itself, so a caller cannot request
+privileged mode, capabilities, host paths, the Docker socket, host networking,
+published ports, a service registration, or a non-Ubuntu image. Every sandbox
+runs with `privileged = false`, `cap_drop = ["ALL"]`, `no-new-privileges`, a
+pids limit, ulimits, private IPC, bounded log files, and no workload identity.
+The strict profile additionally uses a read-only root filesystem; the workspace
+profile restores only the capability subset apt and dpkg require.
+
+Network confinement is layered. The default is `network_mode = "none"`, which
+gives the container nothing but loopback. Opt-in egress uses a dedicated Docker
+bridge with inter-container communication disabled and public resolvers, and a
+host firewall chain hooked from `DOCKER-USER` that drops the WireGuard overlay,
+RFC1918 and carrier-NAT space, link-local and cloud metadata addresses,
+multicast, scheduler ports, and SSH; a separate `INPUT` rule blocks the bridge
+from reaching the host itself. Egress is refused entirely on nodes that were
+not enrolled for it.
+
+Authorization is scoped. Creating, listing, enrolling, and extending require
+full operator authentication. The session token issued with a sandbox is 256
+bits of randomness, shown once, persisted only as a SHA-256 digest, and valid
+only for status, exec, logs, and destroy on that one sandbox ID. It stops
+authorizing the moment the sandbox expires, fails, or is destroyed. Exec
+arguments are passed to Nomad as an argument vector, never through a host
+shell, and argv is rejected when its first element looks like a CLI flag.
+
+Disk is bounded where it can be. Both profiles receive size-capped tmpfs work
+areas at `/workspace` and `/tmp`. Nomad's `ephemeral_disk` value is a
+scheduling reservation rather than an enforced limit, so the agent additionally
+reclaims every sandbox on a node that crosses 92% root-disk or 96% memory use.
+Sandboxes are disposable and managed applications are not, so the sandboxes are
+culled and nothing else on the node is touched.
+
+Capacity is bounded. A node must be explicitly enrolled, control-plane nodes
+are refused at every layer, and each node carries a maximum concurrent sandbox
+count and total CPU and memory budget. Creation is refused on frozen, draining,
+and reserved nodes and when live telemetry shows the node above 85% memory or
+disk use. Every sandbox has a mandatory TTL with a four-hour ceiling, enforced
+by the container's own deadline and an agent-side reaper.
+
+A container is not a virtual machine. This model constrains what a sandbox can
+reach, not what a kernel vulnerability could do. Treat anything placed in an
+egress-enabled sandbox as published.
+
 ## Guard Behavior
 
 The guard protects against resource-risk, not exact cloud billing in v1. It can freeze new placements when local thresholds are crossed, but it does not stop running apps automatically.

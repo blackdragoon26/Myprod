@@ -69,6 +69,34 @@ Reservations are generic capacity ownership, independent of application type or 
 
 This machine boundary is appropriate for projects that install host packages, manipulate network namespaces, or need privileged runtimes. A reservation protects other pool nodes; it cannot prevent a project administrator from damaging its own reserved worker.
 
+## Sandbox Partitions
+
+Sandbox partitions are a third capacity shape, deliberately weaker than both a
+managed app and a project reservation:
+
+| Shape | Boundary | Lifetime | Public reachability |
+| --- | --- | --- | --- |
+| Managed app | Nomad job with a Traefik route | until deleted | yes, through Oracle ingress |
+| Project reservation | whole worker, owned by one project | until released | none by default |
+| Sandbox partition | one unprivileged container inside a per-node budget | mandatory TTL | none, ever |
+
+A sandbox is stored outside `config.yaml` so that it can never be mistaken for
+an application, never be rendered into ingress, and never modify the
+configuration real applications are rendered from. Its Nomad job name is always
+prefixed `poolctl-sbx-`, and the stop and purge paths refuse every other name.
+
+Placement is pinned to one enrolled worker and to `linux/arm64`. Sandbox jobs
+render at a lower Nomad priority than managed apps, are refused on frozen,
+draining, and reserved nodes, and are refused when the target node already
+reports over 85% memory or root-disk use. Draining a node reclaims its
+sandboxes first.
+
+Sandbox networking is loopback-only by default. Public egress is opt-in per
+node and depends on a reversible host bundle that creates one isolated Docker
+bridge and one firewall chain denying the WireGuard overlay, private address
+space, cloud instance metadata, and scheduler ports. See
+[llm-sandbox.md](llm-sandbox.md).
+
 ## Operator Flow
 
 V1 is intentionally SSH-first:
