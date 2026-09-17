@@ -127,18 +127,19 @@ Hosted node controls operate on the real Nomad scheduler:
 - **Release** clears project ownership but deliberately leaves the worker frozen until a separate Unfreeze confirmation.
 - **Deploy** submits the rendered job and verifies that Nomad can read its resulting status.
 
-The hosted app form accepts public images, bounded non-secret environment
+The hosted app form accepts images and bounded non-secret environment
 variables, and an optional fixed app-specific runtime environment mount.
-Secret values are installed separately on the target node at
-`/etc/poolctl/apps/<app-name>.env`; they never pass through the dashboard or
-agent store. Private-registry credentials and persistent volumes remain
-unsupported. Do not place credentials in application fields.
+Enabled agents provide dedicated screens for managed runtime secrets and
+private GHCR connections, backed by encrypted Nomad Variables. Existing
+`/etc/poolctl/apps/<app-name>.env` mounts remain supported unchanged. Persistent
+volumes remain unsupported. Do not place credentials in ordinary app fields.
 
 Each managed app also has a **CI tokens** control. The Oracle agent mints a
 high-entropy deploy credential, shows it once, and stores only its digest.
 Operators can rotate or revoke these app-scoped tokens live without restarting
 the agent. This credential surface is intentionally separate from application
-runtime secrets, which remain SSH-installed on the target node.
+runtime secrets, which use the separate managed-credentials workflow or the
+legacy operator-installed target-node file.
 
 Reserved projects appear under **Project Reservations** beside the managed app inventory. They are shown separately because a reserved machine is infrastructure capacity, not evidence that an application has been deployed.
 
@@ -227,3 +228,10 @@ Running `work/rendered/bootstrap-control-plane.sh` on Oracle will mutate the ser
 - A frozen node is made ineligible in Nomad; existing allocations continue running.
 - Draining a node invokes Nomad drain and can migrate or stop allocations.
 - Project reservations are worker-only, require no active allocations, and preserve exclusive ownership in the Oracle agent state.
+
+### Managed secrets and private images
+
+Enabled agents offer **Secrets & registry** per app and **Registry connections**
+for private GHCR pulls. Save encrypted drafts, then explicitly apply and verify
+only the selected app. Existing apps and older agents retain their current
+behavior. See [the managed credentials guide](docs/managed-credentials.md).

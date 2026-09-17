@@ -172,6 +172,7 @@ func (s Store) UpdateApp(name string, app App) error {
 	found := false
 	for i := range cfg.Apps {
 		if cfg.Apps[i].Name == name {
+			app.ManagedCredentials = cfg.Apps[i].ManagedCredentials
 			cfg.Apps[i] = app
 			found = true
 			break
@@ -331,7 +332,7 @@ func validateAppEnv(env map[string]string) error {
 		upper := strings.ToUpper(key)
 		for _, marker := range []string{"SECRET", "TOKEN", "PASSWORD", "PASSWD", "PRIVATE_KEY", "API_KEY", "CREDENTIAL"} {
 			if strings.Contains(upper, marker) {
-				return fmt.Errorf("environment variable %q looks secret-bearing; install secrets through the SSH-managed secret path instead", key)
+				return fmt.Errorf("environment variable %q looks secret-bearing; use managed app secrets or the legacy operator-installed file instead", key)
 			}
 		}
 		if len(value) > 4096 || strings.ContainsAny(value, "\x00\r\n") {
@@ -553,6 +554,8 @@ func applyAppField(app *App, line string) {
 		app.HealthPath = value(line)
 	case strings.HasPrefix(line, "manage_dns:"):
 		app.ManageDNS = value(line) == "true"
+	case strings.HasPrefix(line, "managed_credentials:"):
+		app.ManagedCredentials = value(line) == "true"
 	case strings.HasPrefix(line, "secret_env:"):
 		app.SecretEnv = value(line) == "true"
 	case strings.HasPrefix(line, "env_json:"):
@@ -703,6 +706,9 @@ func formatConfig(cfg Config) string {
 		b.WriteString(fmt.Sprintf("    health_path: %s\n", app.HealthPath))
 		b.WriteString(fmt.Sprintf("    manage_dns: %t\n", app.ManageDNS))
 		b.WriteString(fmt.Sprintf("    secret_env: %t\n", app.SecretEnv))
+		if app.ManagedCredentials {
+			b.WriteString("    managed_credentials: true\n")
+		}
 		if len(app.Env) != 0 {
 			raw, _ := json.Marshal(app.Env)
 			b.WriteString(fmt.Sprintf("    env_json: %s\n", raw))
@@ -771,3 +777,23 @@ const defaultState = `nodes:
     draining: false
 apps: []
 `
+
+// MarkAppManagedCredentials prevents newer local/disabled agents from silently
+// deploying an opted-in app without its last applied credential references.
+func (s Store) MarkAppManagedCredentials(name string) error {
+	cfg, _, err := s.Load()
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range cfg.Apps {
+		if cfg.Apps[i].Name == name {
+			cfg.Apps[i].ManagedCredentials = true
+			found = true
+		}
+	}
+	if !found {
+		return fmt.Errorf("unknown app %q", name)
+	}
+	return os.WriteFile(filepath.Join(s.dir, "config.yaml"), []byte(formatConfig(cfg)), 0o600)
+}

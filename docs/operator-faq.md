@@ -21,11 +21,11 @@ public route.
 
 ## What Is A Managed Application?
 
-A managed application is a public container image represented in Myprod's
+A managed application is a container image represented in Myprod's
 configuration and deployed as a Nomad job. It has:
 
 - a stable app name;
-- a public image reference;
+- an image reference (public, or private GHCR with a saved connection);
 - a public hostname;
 - one container port and HTTP health path;
 - an exact target node;
@@ -200,7 +200,7 @@ The app form intentionally does not support:
 
 - secret values through the dashboard (only an operator-installed fixed runtime environment file is supported);
 - secret-bearing plain environment variables;
-- private registry credentials;
+- private registries other than the managed GHCR provider;
 - persistent volumes;
 - arbitrary Nomad HCL;
 - automatic deletion of an app's external DNS record;
@@ -209,3 +209,10 @@ The app form intentionally does not support:
 
 Do not encode credentials in image names, hostnames, or health paths. These
 features require dedicated encrypted storage, redaction, and lifecycle design.
+
+## How Do I Add Secrets Or Pull A Private Image?
+
+Use **Registry connections** to save GHCR package-read access, then the app's
+**Secrets & registry** to select it and enter runtime secrets. Save a draft and
+explicitly apply it; saving alone never restarts an app. Older agents keep the
+legacy operator-installed file workflow. See [managed-credentials.md](managed-credentials.md).

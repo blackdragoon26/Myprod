@@ -4,14 +4,15 @@ The hosted dashboard uses Clerk for human operator sign-in. The production
 application is invite-only, with email one-time codes enabled. The current
 operator invitation is restricted to the owner's Clerk account.
 
-Application secrets remain outside Clerk and the dashboard. CI deploy tokens
+Application secrets remain outside Clerk and ordinary app configuration; use
+the dedicated managed-credentials screen when enabled. CI deploy tokens
 remain app-scoped credentials minted and hash-stored by Myprod. These are three
 separate credential classes:
 
 - Clerk sessions authenticate a human operator to the dashboard;
 - Myprod-issued deploy tokens authenticate one repository to one app endpoint;
-- application secrets are installed directly on the target node under
-  `/etc/poolctl/apps`.
+- application secrets use the separate operator-only managed-credentials API
+  or the legacy target-node file under `/etc/poolctl/apps`.
 
 ## Browser Flow
 

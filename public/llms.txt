@@ -18,15 +18,22 @@ x86-only app. An application must publish a linux/arm64 image, preferably a
 multi-platform linux/amd64 + linux/arm64 OCI index. Native binaries and
 downloaded helper tools inside the image must also be ARM64-compatible.
 
-Deploy only immutable public image references in the form
+Deploy immutable image references in the form
 registry/repository@sha256:<digest>. Repository CI must use a Myprod-issued,
 app-scoped deploy token with POST
 https://api.sankalpjha.dev/__poolctl/api/apps/{name}/image. Never use the
-dashboard-wide recovery token in an application repository. Runtime secrets
-remain operator-installed on the exact target node and never transit the
-dashboard.
+dashboard-wide recovery token in an application repository. Runtime secrets use the dedicated managed-credentials workflow when enabled;
+older agents retain the operator-installed target-node file workflow. Never
+put credentials into ordinary app configuration.
 
 Agents must read the linked repository documents before proposing or changing
 an app, CI workflow, Myprod control surface, or Oracle infrastructure. Never
 infer permission to mutate production infrastructure from public website
 access.
+
+Managed credentials: when capabilities appSecretsV1 and registryConnectionsV1
+are present, use the operator-only Secrets & registry and Registry connections
+screens. Private GHCR images are supported with saved pull credentials. Save
+drafts then explicitly apply. Older agents retain the legacy file/public-image
+workflow. Read docs/managed-credentials.md; never send runtime secrets through CI
+image-update tokens or ordinary app configuration.

@@ -64,6 +64,9 @@ func RenderAppJob(cfg Config, appName string) (RenderedFile, error) {
 	if !ok {
 		return RenderedFile{}, fmt.Errorf("unknown app %q", appName)
 	}
+	if app.ManagedCredentials && app.Credentials == nil {
+		return RenderedFile{}, fmt.Errorf("app %q requires managed credentials; deploy through an enabled hosted agent", app.Name)
+	}
 	if app.Image == "" {
 		return RenderedFile{}, fmt.Errorf("app %q is missing image", app.Name)
 	}
@@ -1006,6 +1009,9 @@ WantedBy=timers.target
 
 func renderNomadJob(app App) string {
 	app = appWithDefaults(app)
+	taskName := "app"
+	managedSecret := ""
+	managedAuth := ""
 	constraints := ""
 	environment := ""
 	if len(app.Env) != 0 {
@@ -1031,6 +1037,34 @@ func renderNomadJob(app App) string {
     }
 `, app.PreferNode)
 	}
+	if c := app.Credentials; c != nil {
+		taskName = "app-" + c.Version
+		managedSecret = fmt.Sprintf(`
+      secret "myprod" {
+        provider = "nomad"
+        path = "nomad/jobs/%s/web/%s"
+      }
+`, app.Name, taskName)
+		if len(c.Keys) > 0 {
+			if environment == "" {
+				environment = "\n      env {\n      }\n"
+			}
+			additions := ""
+			for _, key := range c.Keys {
+				additions += fmt.Sprintf("        %s = \"$${secret.myprod.env_%s}\"\n", key, key)
+			}
+			environment = strings.Replace(environment, "      }", additions+"      }", 1)
+		}
+		if c.RegistryHost != "" {
+			managedAuth = fmt.Sprintf(`
+        auth {
+          username = "$${secret.myprod.registry_username}"
+          password = "$${secret.myprod.registry_password}"
+          server_address = "%s"
+        }
+`, c.RegistryHost)
+		}
+	}
 	secretConfig := ""
 	if app.SecretEnv {
 		secretConfig = fmt.Sprintf(`
@@ -1039,7 +1073,7 @@ func renderNomadJob(app App) string {
         ]`, app.Name)
 	}
 
-	return fmt.Sprintf(`job "%s" {
+	rendered := fmt.Sprintf(`job "%s" {
   datacenters = ["pool"]
   type        = "service"
 
@@ -1074,11 +1108,13 @@ func renderNomadJob(app App) string {
       }
     }
 
-    task "app" {
+    task "%s" {
+%s
       driver = "docker"
 
       config {
         image = "%s"
+%s
         ports = ["http"]
 %s
       }
@@ -1091,7 +1127,12 @@ func renderNomadJob(app App) string {
     }
   }
 }
-`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, app.Image, secretConfig, environment, app.CPU, app.MemoryMB)
+`, app.Name, constraints, app.Port, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Domain, app.Name, app.Name, app.Name, app.HealthPath, taskName, managedSecret, app.Image, managedAuth, secretConfig, environment, app.CPU, app.MemoryMB)
+	if app.Credentials == nil {
+		rendered = strings.Replace(rendered, "task \"app\" {\n\n", "task \"app\" {\n", 1)
+		rendered = strings.Replace(rendered, "\n\n        ports", "\n        ports", 1)
+	}
+	return rendered
 }
 
 func userOrUbuntu(node Node) string {

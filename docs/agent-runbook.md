@@ -225,7 +225,8 @@ Use the hosted application flow for ordinary containerized backends. A project r
 
 Preflight requirements:
 
-- publish an immutable public container image for the target architecture;
+- publish an immutable container image for the target architecture; private
+  GHCR images need a saved connection or the existing node-level pull setup;
 - make the service listen on `0.0.0.0` and record its container port;
 - expose an unauthenticated health endpoint that returns HTTP 2xx;
 - either configure Netlify automation on Oracle or point the chosen application
@@ -248,16 +249,15 @@ From the hosted dashboard:
 10. Wait for Agent Output to report a healthy Nomad allocation on the selected node.
 11. Refresh and verify the app status is `deployed`, then test its public HTTPS URL.
 
-Do not enter secrets or private-registry credentials in the dashboard. The
-dashboard accepts public images and internal images whose read-only pull
-credential was already installed by an operator on the target node; it never
-collects registry credentials itself. For an app that explicitly loads
-`/run/secrets/cutable.env`, an operator may first install the fixed
-`/etc/poolctl/apps/<app-name>.env` file on the exact target node as
-`65532:65532` with mode `0400`, then enable the runtime-environment mount.
-Plain non-secret environment variables can also be stored and rendered into
-the Nomad task; secret-shaped names are rejected. Persistent volumes remain
-outside the hosted app contract.
+For enabled agents, use **Secrets & registry** and **Registry connections** as
+documented in [managed-credentials.md](managed-credentials.md). Never enter
+credentials into ordinary app fields or the CI-token dialog. Save drafts first,
+then explicitly apply them. Existing legacy file mounts and preinstalled
+node-level registry credentials remain supported unchanged on older agents.
+The legacy runtime file is `/etc/poolctl/apps/<app-name>.env`, owned by
+`65532:65532` with mode `0400`, mounted read-only at `/run/secrets/cutable.env`.
+The legacy application must explicitly load that file. Managed secrets instead
+populate process environment variables. Persistent volumes remain unsupported.
 
 Use **Edit** to correct an app's domain, image, target, resources, health path,
 DNS mode, or non-secret environment. Saving marks the app configured; deploy it
@@ -331,9 +331,10 @@ updates the stored digest only after the `cutable-api` allocation is healthy,
 so subsequent dashboard actions and automatic deployments use the same
 verified artifact.
 
-Internal GHCR images also require a read-only registry credential configured
-on every eligible target node through Nomad's Docker driver. Do not put that
-credential in the application record, Nomad job, dashboard, or repository.
+Private GHCR images can use a saved managed registry connection. Nomad resolves
+its auth references on the selected node at pull time. Older agents retain the
+existing operator-installed Docker-driver credential workflow. Never put the
+credential in ordinary app configuration, rendered jobs, or the repository.
 
 Registration uses exact-node placement. This constrains one app without reserving the entire worker, so unrelated Nomad applications can share remaining capacity.
 

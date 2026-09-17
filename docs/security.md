@@ -11,7 +11,8 @@ This project assumes all VPS machines are public internet hosts, so scheduler an
 - Public firewall allows only SSH, HTTP, HTTPS, and WireGuard.
 - Worker application ports are allowed only on `wg0` from `10.44.0.0/24` and
   are never opened on the public VPS interface.
-- App secrets are stored using SOPS + age, not plaintext YAML.
+- Managed app secrets use encrypted Nomad Variables. Legacy root-managed node
+  files remain supported; neither is stored in ordinary plaintext app YAML.
 
 ## Current Bootstrap Behavior
 
@@ -58,15 +59,18 @@ idempotent exact-host A-record create/verify operation. It refuses the zone apex
 hostnames outside the configured zone, and any conflicting A, AAAA, or CNAME
 record. Record deletion remains manual.
 
-The hosted form is not a secret-entry surface. Public image references are
-required, and credentials must never be entered into application fields.
-Bounded non-secret environment variables are supported while secret-shaped
-names are rejected. An app may request the fixed
-`/etc/poolctl/apps/<validated-app-name>.env` bind mount; an operator installs
-that file directly on the exact target node as `65532:65532` with mode `0400`.
-The dashboard and agent store persist only the boolean mount policy, never the
-file contents or an arbitrary host path. Private registry credentials still
-require separate node-level configuration.
+Ordinary app forms are not secret-entry surfaces. Dedicated operator-only
+**Secrets & registry** and **Registry connections** screens are available when
+capabilities are enabled. Their API uses encrypted Nomad Variables, immutable
+task-scoped credential versions, write-only values, and explicit apply with
+health verification and job restoration. CI deploy tokens cannot access them.
+See [managed-credentials.md](managed-credentials.md) for authorization, backup,
+retention, rotation, rollback and legacy compatibility boundaries.
+
+The legacy fixed `/etc/poolctl/apps/<validated-app-name>.env` bind mount remains
+unchanged. The file is owned by `65532:65532`, mode `0400`, and mounted read-only.
+No arbitrary host path can be supplied by the app form. Ordinary environment
+variables remain bounded and secret-shaped names are rejected.
 
 Repository-triggered image deployments use app-scoped credentials minted by
 the authenticated Oracle agent. A token contains 256 bits of randomness, is
@@ -86,9 +90,8 @@ must never be copied into project CI.
 Legacy plaintext environment tokens are hash-imported exactly once for a
 backward-compatible rollout. The token store records that import, so a revoked
 legacy token cannot reappear merely because its deprecated environment value
-has not yet been removed. Application-consumed secrets remain outside this
-credential-issuance surface and continue to require direct operator
-installation on the target node.
+has not yet been removed. Application-consumed secrets remain outside the CI-token issuance surface;
+use managed app secrets or the legacy operator-installed file.
 
 The hosted dashboard may retain a sanitized last-successful status snapshot in
 browser local storage for locked, read-only visibility. The snapshot is limited

@@ -268,6 +268,14 @@
 
     .token-dialog { width: min(680px, calc(100vw - 32px)); }
     .token-shell { padding: 20px; }
+    .credential-dialog { padding: 20px; max-height: calc(100vh - 40px); overflow-y: auto; }
+    .credential-dialog [data-content] { display: grid; gap: 14px; }
+    .credential-dialog p { color: var(--text-muted); font-size: 12px; }
+    .credential-dialog textarea { min-height: 110px; font-family: ui-monospace, monospace; }
+    .credential-dialog .form-actions { position: static; flex-wrap: wrap; }
+    .credential-dialog [data-remove-key] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); }
+    .credential-dialog textarea { color: var(--text); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px; }
+    .credential-dialog [data-message] { margin-top: 12px; }
     .token-list { display: grid; gap: 8px; margin: 16px 0; }
     .token-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); }
     .token-row strong { display: block; }
@@ -752,6 +760,7 @@
               <h2>Managed Apps</h2>
               <div class="actions">
                 <span id="deploy-capability" class="pill warn">locked</span>
+                <button id="registry-connections" type="button" hidden disabled>Registry connections</button>
                 <button id="add-app" type="button" disabled>Add application</button>
               </div>
             </div>
@@ -920,7 +929,7 @@
           </div>
         </div>
       </div>
-      <div id="app-form-note" class="form-note">Public images only. Runtime secret values must be installed separately on the target node; this form stores only the fixed mount policy.</div>
+      <div id="app-form-note" class="form-note">Register the image here, then use Secrets & registry when available for private GHCR access and managed secrets. Older agents retain the existing public-image or operator-provisioned workflow.</div>
       <div id="app-error" class="form-error" role="alert"></div>
       <div class="form-actions">
         <button id="app-cancel" type="button">Cancel</button>
@@ -938,7 +947,7 @@
         </div>
         <button id="token-close" class="icon" type="button" aria-label="Close deploy tokens" title="Close">&times;</button>
       </div>
-      <div class="form-note">Application runtime secrets remain SSH-installed and are never accepted here. Deploy-token plaintext is shown once and is not saved by the dashboard.</div>
+      <div class="form-note">Application runtime secrets belong in Secrets & registry when available, or the legacy operator-installed file. They are never accepted in this CI-token dialog. Deploy-token plaintext is shown once and is not saved by the dashboard.</div>
       <div id="token-list" class="token-list"><div class="empty">Loading deploy tokens...</div></div>
       <div class="token-mint">
         <div class="field">
@@ -1007,7 +1016,7 @@
         </details>
         <details>
           <summary>How are CI deploy tokens different from application secrets?</summary>
-          <div class="faq-answer"><p>Myprod generates app-scoped CI tokens, displays each plaintext once, and persists only its digest. Use the app's <strong>CI tokens</strong> control to create, inspect last-used metadata, rotate, or revoke one without restarting the agent. Application-consumed secrets remain SSH-installed on the exact target node and must never be entered into the token dialog or app form.</p></div>
+          <div class="faq-answer"><p>Myprod generates app-scoped CI tokens, displays each plaintext once, and persists only its digest. Use the app's <strong>CI tokens</strong> control to create, inspect last-used metadata, rotate, or revoke one without restarting the agent. Application-consumed secrets use Secrets & registry when the agent supports it; older agents retain the operator-installed file workflow. Never enter runtime secrets in the CI-token dialog or ordinary app form.</p></div>
         </details>
         <details>
           <summary>What is intentionally unsupported?</summary>
@@ -1645,6 +1654,7 @@
     }
 
     function setUnlocked(unlocked) {
+      if (!unlocked && window.closeCredentialDialogs) window.closeCredentialDialogs();
       agentConnected = unlocked;
       document.querySelectorAll("[data-action]").forEach((button) => {
         button.disabled = !unlocked || actionRunning || button.dataset.requiresDns === "true";
@@ -1794,6 +1804,7 @@
             ${app.ManageDNS && !dnsReady ? `<button data-action="app-dns-sync" data-name="${escapeHTML(app.Name)}">Check DNS</button>` : ""}
             ${managedAppLifecycleV2 ? `<button data-edit-app="${escapeHTML(app.Name)}">Edit</button>` : ""}
             ${managedAppLifecycleV2 ? `<button data-image-update="${escapeHTML(app.Name)}">Update image</button>` : ""}
+            ${latestCapabilities.appSecretsV1 ? `<button data-app-credentials="${escapeHTML(app.Name)}">Secrets & registry</button>` : ""}
             ${appDeployTokensV1 ? `<button data-deploy-tokens="${escapeHTML(app.Name)}">CI tokens</button>` : ""}
             <button data-action="app-deploy" data-name="${escapeHTML(app.Name)}" data-requires-dns="${dnsReady ? "false" : "true"}" ${dnsReady ? "" : "disabled"}>Deploy</button>
             ${managedAppLifecycleV2 ? `<button class="danger" data-action="app-delete" data-name="${escapeHTML(app.Name)}">Delete</button>` : ""}
@@ -1905,6 +1916,7 @@
 
     function setActionBusy(active, button) {
       actionRunning = active;
+      window.bindCredentialButtons?.();
       output.setAttribute("aria-busy", String(active));
       document.querySelectorAll("[data-action], [data-edit-app], [data-image-update], [data-deploy-tokens], [data-token-revoke]").forEach((candidate) => {
         candidate.disabled = active || !agentConnected || candidate.dataset.requiresDns === "true";
@@ -2146,6 +2158,7 @@
     }
 
     function bindActionButtons() {
+      if (window.bindCredentialButtons) window.bindCredentialButtons();
       const unlocked = agentConnected;
       document.querySelectorAll("[data-action]").forEach((button) => {
         button.disabled = !unlocked || actionRunning || button.dataset.requiresDns === "true";
@@ -2191,7 +2204,7 @@
       appEnvField.hidden = !managedAppLifecycleV2;
       appForm.elements.env.disabled = !managedAppLifecycleV2;
       appFormNote.textContent = managedAppLifecycleV2
-        ? "Public images only. Plain non-secret environment variables are stored in app configuration; secret values remain in the operator-installed fixed mount."
+        ? (latestCapabilities.appSecretsV1 ? "Plain environment variables go here. After registration, use Secrets & registry for managed secrets and private GHCR access." : "Plain non-secret environment variables go here. This agent uses the existing public-image or operator-provisioned credentials workflow.")
         : "Connected agent supports registration, deployment, and the operator-installed secret mount. Edit, delete, generic image updates, and plain environment variables will appear after the agent is upgraded.";
       appNode.innerHTML = nodes.map((node) => `<option value="${escapeHTML(node.Name)}">${escapeHTML(node.Name)} · ${escapeHTML(node.Provider || node.Role || "node")}</option>`).join("");
       appManageDNS.disabled = !latestDNS.configured;
@@ -2334,6 +2347,7 @@
 
     async function lockAgentSession() {
       closeDeployTokenDialog();
+      window.closeCredentialDialogs?.();
       if (clerkReady && window.Clerk?.isSignedIn) await window.Clerk.signOut();
       localStorage.removeItem("poolctlAgentToken");
       tokenInput.value = "";
@@ -2405,5 +2419,6 @@
     syncAuthControls();
     initializeClerkAuth().finally(refreshAll);
   </script>
+  <script src="/credentials.js"></script>
 </body>
 </html>

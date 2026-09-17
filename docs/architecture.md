@@ -96,8 +96,10 @@ configuration, bounded non-secret environment variables, generic digest
 updates, explicit deletion, and ephemeral container filesystems. Managed apps
 may also opt into a fixed app-specific runtime environment file installed
 directly on the target node; Myprod stores only that boolean mount policy and
-never receives the secret contents. Private registries and persistent volumes
-remain outside the hosted contract. Managed DNS records are preserved when an
+never receives the legacy file contents. Enabled agents additionally support
+write-only managed secrets and private GHCR connections through encrypted Nomad
+Variables; see [managed-credentials.md](managed-credentials.md). Persistent
+volumes remain outside the hosted contract. Managed DNS records are preserved when an
 app is deleted and require separate operator review.
 
 ## Resource Telemetry

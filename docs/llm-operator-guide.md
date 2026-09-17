@@ -28,6 +28,7 @@ credential from a screenshot.
 | Dashboard or Oracle agent deployment | [`deployment.md`](deployment.md) |
 | App registration, edit, image update, env, deploy | [`application-onboarding.md`](application-onboarding.md) |
 | App architecture, native binaries, image publishing, CI/CD | [`arm64-application-cicd.md`](arm64-application-cicd.md) |
+| App runtime secrets or private GHCR connections | [`managed-credentials.md`](managed-credentials.md) |
 | CI deploy-token mint, rotate, revoke | [`agent-runbook.md`](agent-runbook.md) sections 8–9 |
 | DNS credentials or managed records | [`netlify-dns.md`](netlify-dns.md) |
 | Join, freeze, drain, resize, or destroy a node | [`agent-runbook.md`](agent-runbook.md) |
@@ -45,9 +46,12 @@ Keep these three credential classes separate:
    Myprod mints 32 random bytes, shows the plaintext once, and stores only a
    digest in the Oracle agent store. Mint, rotate, and revoke them live through
    **CI tokens**; do not restart the agent.
-3. Application runtime secrets belong only in the root-managed target-node file
-   `/etc/poolctl/apps/<app-name>.env`. They never enter the dashboard, Clerk,
-   Vercel, the agent store, or repository.
+3. Application runtime secrets and private GHCR pull credentials use the
+   operator-only managed-credentials API when its capabilities are enabled.
+   Values are encrypted in Nomad Variables and never enter app configuration,
+   Git, Vercel, Clerk, status snapshots, or rendered jobs. Follow
+   [`managed-credentials.md`](managed-credentials.md). Older agents retain the
+   root-managed `/etc/poolctl/apps/<app-name>.env` file workflow.
 
 The legacy `POOLCTL_AGENT_TOKEN` is a recovery credential. Do not give it to an
 application repository and do not replace app-scoped CI tokens with it.
@@ -67,7 +71,9 @@ application repository and do not replace app-scoped CI tokens with it.
 - Image changes use the generic app endpoint and an immutable digest. Do not
   add another app-specific deploy handler.
 - Non-secret environment variables may be stored in app configuration. Reject
-  secret-shaped names. Runtime secrets stay SSH-installed.
+  secret-shaped names. Runtime secrets use Secrets & registry when available;
+  legacy operator-installed files remain supported. Saving credentials never
+  applies them; explicit Apply & restart is required.
 - Never destroy, resize, drain, release, or unfreeze infrastructure merely to
   make a deployment pass.
 

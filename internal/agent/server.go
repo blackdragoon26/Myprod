@@ -28,16 +28,18 @@ const (
 )
 
 type server struct {
-	addr         string
-	store        pool.Store
-	token        string
-	operatorAuth bearerAuthenticator
-	runNomad     func(context.Context, ...string) (string, error)
-	dns          dnsManager
-	deployMu     sync.Mutex
+	addr          string
+	store         pool.Store
+	token         string
+	operatorAuth  bearerAuthenticator
+	runNomad      func(context.Context, ...string) (string, error)
+	dns           dnsManager
+	deployMu      sync.Mutex
+	secretRequest nomadRequest
 }
 
 type nomadNode struct {
+	Version               string `json:"Version"`
 	ID                    string `json:"ID"`
 	Name                  string `json:"Name"`
 	Status                string `json:"Status"`
@@ -79,9 +81,13 @@ type response struct {
 	DeployTokens []pool.DeployTokenMetadata `json:"deployTokens,omitempty"`
 	IssuedToken  *issuedDeployToken         `json:"issuedToken,omitempty"`
 	Updated      string                     `json:"updated,omitempty"`
+	Credentials  *credentialMetadata        `json:"credentials,omitempty"`
+	Registries   []registryMetadata         `json:"registries,omitempty"`
 }
 
 type agentCapabilities struct {
+	AppSecretsV1          bool `json:"appSecretsV1"`
+	RegistryConnectionsV1 bool `json:"registryConnectionsV1"`
 	ManagedAppLifecycleV2 bool `json:"managedAppLifecycleV2"`
 	AppDeployTokensV1     bool `json:"appDeployTokensV1"`
 	ClerkOperatorAuthV1   bool `json:"clerkOperatorAuthV1"`
@@ -206,6 +212,14 @@ func Serve(args []string) error {
 	}
 
 	mux := http.NewServeMux()
+	if os.Getenv("POOLCTL_MANAGED_CREDENTIALS") == "true" {
+		s.secretRequest, err = newNomadSecretClient()
+		if err != nil {
+			return err
+		}
+	}
+	mux.HandleFunc("/__poolctl/api/registries", s.handleRegistries)
+	mux.HandleFunc("/__poolctl/api/registries/", s.handleRegistries)
 	mux.HandleFunc("/__poolctl/api/health", s.handleHealth)
 	mux.HandleFunc("/__poolctl/api/status", s.handleStatus)
 	mux.HandleFunc("/__poolctl/api/action", s.handleAction)
@@ -261,7 +275,7 @@ func (s *server) deployP4Lens(ctx context.Context, image string) (string, error)
 	return s.deployAppImage(ctx, p4LensAppName, image)
 }
 
-func (s *server) deployAppImage(ctx context.Context, appName, image string) (string, error) {
+func (s *server) deployAppImage(ctx context.Context, appName, image string) (output string, deployErr error) {
 	s.deployMu.Lock()
 	defer s.deployMu.Unlock()
 
@@ -273,6 +287,7 @@ func (s *server) deployAppImage(ctx context.Context, appName, image string) (str
 	if !ok {
 		return "", fmt.Errorf("unknown app %q", appName)
 	}
+	defer redactManagedDeployment(app.ManagedCredentials, &output, &deployErr)
 	if !validImmutableImageUpdate(app.Image, image) {
 		return "", fmt.Errorf("image must be an immutable sha256 digest in the app's existing repository %q", imageRepository(app.Image))
 	}
@@ -293,7 +308,7 @@ func (s *server) deployAppImage(ctx context.Context, appName, image string) (str
 			break
 		}
 	}
-	file, err := pool.RenderAppJob(cfg, app.Name)
+	file, err := s.renderAppJob(ctx, cfg, app.Name)
 	if err != nil {
 		return "", err
 	}
@@ -403,6 +418,8 @@ func (s *server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		Resources: s.readNodeResources(r.Context()),
 		DNS:       s.dnsCapability(),
 		Capabilities: agentCapabilities{
+			AppSecretsV1:          s.secretRequest != nil,
+			RegistryConnectionsV1: s.secretRequest != nil,
 			ManagedAppLifecycleV2: true,
 			AppDeployTokensV1:     true,
 			ClerkOperatorAuthV1:   s.operatorAuth != nil,
@@ -415,6 +432,8 @@ func (s *server) handleApps(w http.ResponseWriter, r *http.Request) {
 	if !s.authorized(w, r) {
 		return
 	}
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, response{OK: false, Error: "method not allowed"})
 		return
@@ -428,6 +447,7 @@ func (s *server) handleApps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	app.AllowWorkers = false
+	app.ManagedCredentials = false
 	if err := s.store.AddApp(app); err != nil {
 		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		return
@@ -455,6 +475,14 @@ func (s *server) handleApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := parts[0]
+	if (len(parts) == 2 || len(parts) == 3) && parts[1] == "credentials" {
+		operation := ""
+		if len(parts) == 3 {
+			operation = parts[2]
+		}
+		s.handleAppCredentials(w, r, name, operation)
+		return
+	}
 	if len(parts) >= 2 && parts[1] == "deploy-tokens" {
 		s.handleAppDeployTokens(w, r, name, parts[2:])
 		return
@@ -519,6 +547,8 @@ func (s *server) handleApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	app.AllowWorkers = false
+	s.deployMu.Lock()
+	defer s.deployMu.Unlock()
 	if err := s.store.UpdateApp(name, app); err != nil {
 		writeJSON(w, http.StatusBadRequest, response{OK: false, Error: err.Error()})
 		return
@@ -632,7 +662,7 @@ func (s *server) handleAction(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, response{OK: true, Output: output, Updated: time.Now().UTC().Format(time.RFC3339)})
 }
 
-func (s *server) runAction(ctx context.Context, action, name, value string) (string, error) {
+func (s *server) runAction(ctx context.Context, action, name, value string) (result string, actionErr error) {
 	switch action {
 	case "control-status":
 		return run(ctx, "systemctl", "is-active", "nomad", "traefik", "wg-quick@wg0")
@@ -669,6 +699,7 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if !ok {
 			return "", fmt.Errorf("unknown app %q", name)
 		}
+		defer redactManagedDeployment(app.ManagedCredentials, &result, &actionErr)
 		if app.ManageDNS {
 			result, dnsErr := s.syncAppDNS(ctx, app)
 			if dnsErr != nil {
@@ -689,7 +720,7 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if nodeState := state.Nodes[placement]; nodeState.Frozen || nodeState.Draining || nodeState.ReservedFor != "" {
 			return "", fmt.Errorf("target node %s is unavailable: frozen=%t draining=%t reserved_for=%q", placement, nodeState.Frozen, nodeState.Draining, nodeState.ReservedFor)
 		}
-		file, err := pool.RenderAppJob(cfg, name)
+		file, err := s.renderAppJob(ctx, cfg, name)
 		if err != nil {
 			return "", err
 		}
@@ -733,11 +764,17 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 			return "", fmt.Errorf("unknown app %q", name)
 		}
 		output := ""
-		if state.Apps[name].Status == "deployed" {
+		if app.ManagedCredentials && s.secretRequest == nil {
+			return "", errors.New("Enable managed credentials before deleting this app")
+		}
+		if state.Apps[name].Status == "deployed" || app.ManagedCredentials {
 			output, err = s.nomad(ctx, "job", "stop", "-purge", name)
 			if err != nil {
 				return output, fmt.Errorf("stop deployed app before deletion: %w", err)
 			}
+		}
+		if err := s.deleteAppCredentials(ctx, name); err != nil {
+			return output, fmt.Errorf("workload stopped but credential cleanup failed: %w", err)
 		}
 		if err := s.store.DeleteApp(name); err != nil {
 			return output, err
@@ -755,7 +792,7 @@ func (s *server) runAction(ctx context.Context, action, name, value string) (str
 		if err != nil {
 			return "", err
 		}
-		file, err := pool.RenderAppJob(cfg, name)
+		file, err := s.renderAppJob(ctx, cfg, name)
 		if err != nil {
 			return "", err
 		}
@@ -992,11 +1029,11 @@ func deploymentVerified(raw []byte, jobName, expectedNode, evalID string) (bool,
 	seen := 0
 	for _, status := range statuses {
 		for _, allocation := range status.Allocations {
-			if allocation.JobID != jobName || allocation.EvalID != evalID {
+			if allocation.JobID != jobName || (evalID != "" && allocation.EvalID != evalID) {
 				continue
 			}
 			seen++
-			if allocation.NodeName == expectedNode && allocation.DesiredStatus == "run" && allocation.ClientStatus == "running" && allocation.DeploymentStatus != nil && allocation.DeploymentStatus.Healthy {
+			if (expectedNode == "" || allocation.NodeName == expectedNode) && allocation.DesiredStatus == "run" && allocation.ClientStatus == "running" && allocation.DeploymentStatus != nil && allocation.DeploymentStatus.Healthy {
 				return true, "", nil
 			}
 		}

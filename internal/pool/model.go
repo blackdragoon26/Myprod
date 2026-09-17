@@ -26,19 +26,29 @@ type Guard struct {
 	MaxLoad1         float64
 }
 
+// RuntimeCredentials contains references only, never values. It is populated by
+// the agent at render time and is not accepted from application API requests.
+type RuntimeCredentials struct {
+	Version      string
+	Keys         []string
+	RegistryHost string
+}
+
 type App struct {
-	Name         string
-	Image        string
-	Domain       string
-	Port         int
-	PreferNode   string
-	AllowWorkers bool
-	CPU          int
-	MemoryMB     int
-	HealthPath   string
-	ManageDNS    bool
-	SecretEnv    bool
-	Env          map[string]string
+	ManagedCredentials bool
+	Credentials        *RuntimeCredentials `json:"-"`
+	Name               string
+	Image              string
+	Domain             string
+	Port               int
+	PreferNode         string
+	AllowWorkers       bool
+	CPU                int
+	MemoryMB           int
+	HealthPath         string
+	ManageDNS          bool
+	SecretEnv          bool
+	Env                map[string]string
 }
 
 type State struct {

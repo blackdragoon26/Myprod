@@ -22,7 +22,7 @@ The project agent must:
    service accepts public traffic.
 6. Build and test the image locally.
 7. Publish an immutable image tag and record its registry digest.
-8. Confirm the image can be pulled without registry credentials.
+8. Confirm the image is publicly pullable or identify a saved Myprod GHCR connection with package read access.
 9. Document minimum CPU, memory, disk, architecture, and ephemeral-storage
    behavior.
 10. Return a Myprod handoff manifest containing every field below.
@@ -57,28 +57,35 @@ project test command and result:
 known limitations:
 ```
 
-Applications that require secrets may opt into the fixed, operator-installed
-runtime environment file. The dashboard stores only `secret_env: true`; it
-never receives secret values. Before deployment, an operator must install
-`/etc/poolctl/apps/<app-name>.env` on the exact target node with owner
-`65532:65532` and mode `0400`. The container receives it read-only at
-`/run/secrets/cutable.env`. The application must explicitly load that file.
+Applications that require secrets use **Secrets & registry** when the agent
+advertises `appSecretsV1`. Supply required key names, never values, in the
+handoff. The operator saves values and explicitly applies them; Nomad injects
+these as process environment variables. Private GHCR images select a saved
+connection when `registryConnectionsV1` is available. See
+[managed-credentials.md](managed-credentials.md).
+
+Older agents still support the fixed operator-installed file at
+`/etc/poolctl/apps/<app-name>.env` (owner `65532:65532`, mode `0400`), mounted
+read-only at `/run/secrets/cutable.env` with `secret_env: true`. The application
+must explicitly load that legacy file. Do not mix it with managed environment
+secrets without an explicit migration.
 
 Persistent volumes remain unsupported. Stop when durable application data
 cannot live in an external managed service.
 
 Plain, non-secret environment variables may be included in the handoff. If a
 variable name looks credential-bearing (for example, it contains `TOKEN`,
-`PASSWORD`, `SECRET`, `API_KEY`, `PRIVATE_KEY`, or `CREDENTIAL`), or if required
-secrets cannot use the fixed operator-installed file, stop and report that the
-hosted app form cannot safely represent the workload.
+`PASSWORD`, `SECRET`, `API_KEY`, `PRIVATE_KEY`, or `CREDENTIAL`), keep it out of ordinary app environment fields. If neither
+managed secrets
+nor the legacy file can represent the workload, report the limitation.
 
 After registration, a Myprod operator may mint an app-scoped CI deploy token
 from the hosted dashboard and place it in the repository's masked Actions
 secrets. Project agents must never request the dashboard-wide operator token.
 The CI workflow may call only the generic immutable-image endpoint for its own
 app and repository. Deploy-token issuance does not change the rule above:
-credentials consumed by the application itself remain SSH-installed.
+credentials consumed by the application itself use the separate managed
+secrets workflow or legacy operator-installed file. CI never edits them.
 
 ## SpliDT Agent Context
 

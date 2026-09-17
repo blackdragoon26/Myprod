@@ -100,3 +100,13 @@ runtime configuration and must never be supplied to Vercel or committed. Follow
 ## Manual Deploy
 
 Manual deploys are useful for quick iteration, but they are not the long-term source of truth. Production should be Git-driven so the deployed dashboard always matches `main`.
+
+## Managed credentials compatibility
+
+`appSecretsV1` and `registryConnectionsV1` independently gate the new dashboard
+controls. Enable them with `POOLCTL_MANAGED_CREDENTIALS=true` only after verifying
+Nomad 2.0+ on all target nodes. See [managed-credentials.md](managed-credentials.md).
+No app is automatically migrated. Keep existing files, node registry auth and
+CI tokens. Rollout restarts only `poolctl-agent`; compare application allocation
+IDs and job modification indexes before and after. Deploy both `index.html`
+and `credentials.js` from the same Git commit.

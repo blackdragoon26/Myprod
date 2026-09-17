@@ -36,7 +36,7 @@ digest that resolves only to an AMD64 manifest is not compatible.
 An application agent owns:
 
 - application source, tests, Dockerfile, and architecture-compatible binaries;
-- the public container image and its immutable registry digest;
+- the architecture-compatible container image and its immutable registry digest;
 - the health endpoint, container port, resource recommendation, and app-level
   configuration;
 - repository CI that builds, publishes, and requests deployment.
@@ -45,7 +45,7 @@ The Myprod operator owns:
 
 - app registration, target-node selection, CPU and memory reservations;
 - Oracle, Nomad, Traefik, WireGuard, DNS credentials, and host firewall state;
-- app-scoped CI-token issuance and application-secret installation;
+- app-scoped CI-token issuance and managed credentials or legacy secret installation;
 - production investigation requiring SSH or Nomad ACL access.
 
 Do not cross this boundary merely because an image fails on ARM64. A project
@@ -399,3 +399,14 @@ SpliDT demonstrates the required pattern:
 This example proves the desired solution: change the application's build and
 published image, then deploy the ARM64-capable digest. The Oracle system itself
 does not change for the application.
+
+## Private GHCR and managed runtime secrets
+
+An enabled agent accepts private GHCR images via a saved registry connection;
+public image visibility is not required for that path. Use
+[managed-credentials.md](managed-credentials.md). Keep source and image visibility
+independent. Include the required connection name and secret key names, never
+credential values, in the handoff. CI keeps its app-scoped Myprod token and
+uses the last applied runtime/registry credential version; it cannot apply drafts.
+The anonymous-pull instructions above apply to public images. For private
+images, use the dashboard's registry test and verify ARM64 compatibility.
